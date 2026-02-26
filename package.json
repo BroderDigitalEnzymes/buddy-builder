@@ -18,6 +18,8 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@types/node": "^25.3.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "electron": "^40.6.1",
     "esbuild": "^0.27.3",
     "playwright": "^1.58.2",
@@ -25,6 +27,9 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-virtuoso": "^4.18.1",
     "zod": "^4.3.6"
   }
 }

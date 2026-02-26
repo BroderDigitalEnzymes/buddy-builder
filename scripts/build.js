@@ -31,13 +31,15 @@ async function main() {
       external: ["electron"],
     }),
 
-    // Renderer (browser context — no node, no zod at runtime)
+    // Renderer (browser context — React, no node)
     build({
       ...shared,
-      entryPoints: ["src/renderer/app.ts"],
+      entryPoints: ["src/renderer/app.tsx"],
       outfile: "dist/renderer/app.js",
       platform: "browser",
       format: "iife",
+      jsx: "automatic",
+      minify: true,
     }),
   ]);
 

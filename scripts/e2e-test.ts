@@ -15,75 +15,107 @@ async function run() {
   const window = await app.firstWindow();
   console.log("=== Window opened ===");
 
-  // Collect all console messages
   const logs: string[] = [];
   window.on("console", (msg) => {
     const line = `[console.${msg.type()}] ${msg.text()}`;
     logs.push(line);
     console.log(line);
   });
-
-  // Collect page errors
   window.on("pageerror", (err) => {
     const line = `[PAGE ERROR] ${err.message}`;
     logs.push(line);
     console.log(line);
   });
 
-  // Wait for page to load
   await window.waitForLoadState("domcontentloaded");
   await new Promise((r) => setTimeout(r, 1000));
 
-  // Screenshot: initial state
+  // Screenshot 1: initial
   const ss1 = path.join(TEMP, "buddy-e2e-1-initial.png");
   await window.screenshot({ path: ss1 });
   console.log(`[SCREENSHOT] ${ss1}`);
 
-  // Check DOM elements
   const hasNewSession = await window.isVisible("#new-session");
   const hasInput = await window.isVisible("#input");
   const hasSend = await window.isVisible("#send");
-  const hasToolbar = await window.isVisible("#toolbar");
-  const tabCount = await window.locator(".tab").count();
-  const policyBtnCount = await window.locator(".policy-btn").count();
+  console.log(`[DOM] newSession=${hasNewSession} input=${hasInput} send=${hasSend}`);
 
-  console.log(`[DOM] newSession=${hasNewSession} input=${hasInput} send=${hasSend} toolbar=${hasToolbar} tabs=${tabCount} policyBtns=${policyBtnCount}`);
-
-  // Try creating a session
+  // Create session
   console.log("=== Clicking + New ===");
   await window.click("#new-session");
-  await new Promise((r) => setTimeout(r, 3000)); // wait for session to spawn
+  await new Promise((r) => setTimeout(r, 3000));
 
-  // Screenshot: after session creation
   const ss2 = path.join(TEMP, "buddy-e2e-2-session.png");
   await window.screenshot({ path: ss2 });
   console.log(`[SCREENSHOT] ${ss2}`);
 
-  const tabCount2 = await window.locator(".tab").count();
-  const messagesHTML = await window.locator("#messages").innerHTML();
-  console.log(`[DOM] tabs after create=${tabCount2}`);
-  console.log(`[DOM] messages HTML (first 500): ${messagesHTML.slice(0, 500)}`);
+  const tabCount = await window.locator(".tab").count();
+  console.log(`[DOM] tabs=${tabCount}`);
 
-  // Check if send button is enabled (session should be idle)
+  // Send a message
+  console.log("=== Sending test message ===");
+  const inputEl = window.locator("#input");
   const sendDisabled = await window.locator("#send").isDisabled();
-  console.log(`[DOM] send disabled=${sendDisabled}`);
+  console.log(`[DOM] send disabled before typing=${sendDisabled}`);
 
-  // Try sending a message if session is ready
-  if (!sendDisabled) {
-    console.log("=== Sending test message ===");
-    await window.fill("#input", "Say hello in exactly 5 words.");
-    await window.click("#send");
-    await new Promise((r) => setTimeout(r, 8000)); // wait for response
+  await inputEl.click();
+  await inputEl.fill("Read package.json and tell me the project name.");
+  const inputVal = await inputEl.inputValue();
+  console.log(`[DOM] input value after fill="${inputVal}"`);
 
-    const ss3 = path.join(TEMP, "buddy-e2e-3-response.png");
-    await window.screenshot({ path: ss3 });
-    console.log(`[SCREENSHOT] ${ss3}`);
+  // Debug: check send button state and try clicking
+  const sendEl = window.locator("#send");
+  const sendDisabled2 = await sendEl.isDisabled();
+  const sendVisible = await sendEl.isVisible();
+  console.log(`[DOM] send disabled=${sendDisabled2} visible=${sendVisible}`);
 
-    const messagesAfter = await window.locator("#messages").innerHTML();
-    console.log(`[DOM] messages after send (first 800): ${messagesAfter.slice(0, 800)}`);
+  // Try clicking the send button
+  await sendEl.click();
+  await new Promise((r) => setTimeout(r, 500));
+
+  // Also check if the textarea still has value after click
+  const inputValAfter = await inputEl.inputValue();
+  console.log(`[DOM] input value after click send="${inputValAfter}"`);
+
+  const msgCountAfterSend = await window.locator(".msg").count();
+  console.log(`[DOM] messages immediately after send=${msgCountAfterSend}`);
+  const htmlAfterSend = await window.locator("#messages").innerHTML().catch(() => "(no #messages)");
+  console.log(`[DOM] HTML after send: ${htmlAfterSend.slice(0, 300)}`);
+
+  // Wait for the response — poll for .msg-assistant or .msg-result
+  console.log("=== Waiting for response ===");
+  try {
+    await window.locator(".msg-result").first().waitFor({ timeout: 30000 });
+    console.log("[OK] Got result entry");
+  } catch {
+    console.log("[WARN] Timed out waiting for result, taking screenshot anyway");
   }
 
-  // Final summary
+  await new Promise((r) => setTimeout(r, 500));
+
+  const ss3 = path.join(TEMP, "buddy-e2e-3-response.png");
+  await window.screenshot({ path: ss3 });
+  console.log(`[SCREENSHOT] ${ss3}`);
+
+  const msgCount = await window.locator(".msg").count();
+  const toolCount = await window.locator(".tool-entry").count();
+  const hasResult = await window.locator(".msg-result").count();
+  const assistantText = await window.locator(".msg-assistant").first().textContent().catch(() => "(none)");
+  console.log(`[DOM] messages=${msgCount} tools=${toolCount} results=${hasResult}`);
+  console.log(`[DOM] assistant text: ${assistantText?.slice(0, 200)}`);
+
+  // Test policy buttons
+  console.log("=== Testing policy switch ===");
+  const readOnlyBtn = window.locator('.policy-btn[data-preset="read-only"]');
+  if (await readOnlyBtn.isVisible()) {
+    await readOnlyBtn.click();
+    await new Promise((r) => setTimeout(r, 500));
+    const ss4 = path.join(TEMP, "buddy-e2e-4-policy.png");
+    await window.screenshot({ path: ss4 });
+    console.log(`[SCREENSHOT] ${ss4}`);
+  }
+
+  // Error summary
   console.log("\n=== Console log summary ===");
   const errors = logs.filter((l) => l.includes("ERROR") || l.includes("error") || l.includes("Error"));
   if (errors.length > 0) {
