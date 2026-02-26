@@ -1,0 +1,30 @@
+{
+  "name": "buddy-builder",
+  "version": "1.0.0",
+  "description": "Programmatic wrapper around Claude Code CLI",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "cli": "npx tsx src/cli.ts",
+    "build": "node scripts/build.js",
+    "start": "npm run build && npx electron .",
+    "dev": "npm run build && npx electron .",
+    "probe": "npx tsx src/probe.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.3.1",
+    "electron": "^40.6.1",
+    "esbuild": "^0.27.3",
+    "playwright": "^1.58.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  }
+}

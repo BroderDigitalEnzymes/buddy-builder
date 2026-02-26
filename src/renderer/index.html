@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Buddy Builder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="tabs">
+    <div id="tab-list"></div>
+    <div id="new-session-group">
+      <select id="perm-mode">
+        <option value="bypassPermissions">Bypass Permissions</option>
+        <option value="acceptEdits">Auto-Accept Edits</option>
+        <option value="default" selected>Default</option>
+        <option value="plan">Plan Only</option>
+      </select>
+      <button id="new-session">+ New</button>
+    </div>
+  </div>
+  <div id="toolbar">
+    <span id="toolbar-label">Tool Policy:</span>
+    <button class="policy-btn" data-preset="unrestricted">Unrestricted</button>
+    <button class="policy-btn" data-preset="allow-edits">Allow Edits</button>
+    <button class="policy-btn" data-preset="no-writes">No Writes</button>
+    <button class="policy-btn" data-preset="read-only">Read Only</button>
+    <span id="toolbar-info"></span>
+  </div>
+  <div id="chat">
+    <div id="messages"></div>
+    <div id="status-bar"></div>
+  </div>
+  <div id="input-bar">
+    <textarea id="input" placeholder="Type a message..." rows="1"></textarea>
+    <button id="send">Send</button>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
