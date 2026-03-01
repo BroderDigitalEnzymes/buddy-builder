@@ -1,26 +1,22 @@
 import { useSyncExternalStore } from "react";
-import type {
-  ClientApi,
-  SessionEvent,
-  ToolPolicyConfig,
-  PolicyPreset,
-  PermissionMode,
+import {
+  PERMISSION_MODE_PRESETS,
+  type ClientApi,
+  type SessionEvent,
+  type ToolPolicyConfig,
+  type PolicyPreset,
+  type PermissionMode,
+  type ChatEntry,
 } from "../ipc.js";
 
-// ─── Chat entry types ────────────────────────────────────────────
-
-export type ChatEntry =
-  | { kind: "user"; text: string }
-  | { kind: "text"; text: string }
-  | { kind: "tool"; toolName: string; toolUseId: string; status: "running" | "done" | "blocked"; detail: string; toolInput: Record<string, unknown> }
-  | { kind: "result"; cost: number; turns: number; durationMs: number }
-  | { kind: "system"; text: string };
+export type { ChatEntry } from "../ipc.js";
 
 export type SessionData = {
   id: string;
   name: string;
   state: string;
   cost: number;
+  claudeSessionId: string | null;
   permissionMode: PermissionMode;
   policyPreset: PolicyPreset;
   entries: ChatEntry[];
@@ -81,6 +77,34 @@ export function switchSession(id: string): void {
   emit();
 }
 
+export async function loadPersistedSessions(): Promise<void> {
+  try {
+    const infos = await api().listSessions();
+    for (const info of infos) {
+      if (state.sessions.has(info.id)) continue;
+      // Fetch full entries from main
+      let entries: ChatEntry[] = [];
+      try {
+        entries = await api().getSessionEntries({ sessionId: info.id });
+      } catch { /* empty */ }
+      state.counter++;
+      state.sessions.set(info.id, {
+        id: info.id,
+        name: info.name,
+        state: info.state,
+        cost: info.cost,
+        claudeSessionId: info.claudeSessionId,
+        permissionMode: "default",
+        policyPreset: "no-writes",
+        entries,
+      });
+    }
+    emit();
+  } catch (err) {
+    console.error("Failed to load persisted sessions:", err);
+  }
+}
+
 export async function createSession(permissionMode: PermissionMode): Promise<void> {
   try {
     const id = await api().createSession({ permissionMode });
@@ -90,9 +114,10 @@ export async function createSession(permissionMode: PermissionMode): Promise<voi
       name: `Session ${state.counter}`,
       state: "idle",
       cost: 0,
+      claudeSessionId: null,
       permissionMode,
-      policyPreset: "unrestricted",
-      entries: [{ kind: "system", text: `Session created · ${permissionMode}` }],
+      policyPreset: PERMISSION_MODE_PRESETS[permissionMode],
+      entries: [{ kind: "system", text: `Session created · ${permissionMode}`, ts: Date.now() }],
     });
     state.activeId = id;
     emit();
@@ -106,14 +131,23 @@ export async function sendMessage(text: string): Promise<void> {
   const data = state.sessions.get(state.activeId);
   if (!data || data.state !== "idle") return;
 
-  data.entries.push({ kind: "user", text });
+  data.entries.push({ kind: "user", text, ts: Date.now() });
   emit();
 
   try {
     await api().sendMessage({ sessionId: state.activeId, text });
   } catch (err) {
-    data.entries.push({ kind: "system", text: `Send error: ${err}` });
+    data.entries.push({ kind: "system", text: `Send error: ${err}`, ts: Date.now() });
     emit();
+  }
+}
+
+export async function answerQuestion(toolUseId: string, answer: string): Promise<void> {
+  if (!state.activeId) return;
+  try {
+    await api().answerQuestion({ sessionId: state.activeId, toolUseId, answer });
+  } catch (err) {
+    console.error("Failed to answer question:", err);
   }
 }
 
@@ -126,7 +160,7 @@ export async function setPreset(preset: PolicyPreset): Promise<void> {
   try {
     await api().updatePolicy({ sessionId: state.activeId, policy });
     data.policyPreset = preset;
-    data.entries.push({ kind: "system", text: `Tool policy → ${preset}` });
+    data.entries.push({ kind: "system", text: `Tool policy → ${preset}`, ts: Date.now() });
     emit();
   } catch (err) {
     console.error("Failed to update policy:", err);
@@ -137,12 +171,44 @@ export async function killSession(id: string): Promise<void> {
   try {
     await api().killSession({ sessionId: id });
   } catch { /* ignore */ }
+  // Don't delete from store — session stays as dead/resumable
+  // The exit event will update the state to "dead"
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  try {
+    await api().deleteSession({ sessionId: id });
+  } catch { /* ignore */ }
   state.sessions.delete(id);
   if (state.activeId === id) {
     const ids = [...state.sessions.keys()];
     state.activeId = ids.length > 0 ? ids[ids.length - 1] : null;
   }
   emit();
+}
+
+export async function renameSession(id: string, name: string): Promise<void> {
+  const data = state.sessions.get(id);
+  if (!data) return;
+  data.name = name;
+  emit();
+  try {
+    await api().renameSession({ sessionId: id, name });
+  } catch (err) {
+    console.error("Failed to rename session:", err);
+  }
+}
+
+export async function resumeSession(id: string): Promise<void> {
+  const data = state.sessions.get(id);
+  if (!data) return;
+  try {
+    await api().resumeSession({ sessionId: id });
+    // State will be updated via stateChange event
+  } catch (err) {
+    data.entries.push({ kind: "system", text: `Resume failed: ${err}`, ts: Date.now() });
+    emit();
+  }
 }
 
 // ─── Event handling ──────────────────────────────────────────────
@@ -164,7 +230,6 @@ function handleEvent(event: SessionEvent): void {
 
   switch (event.kind) {
     case "ready":
-      data.entries.push({ kind: "system", text: `Connected · ${event.model}` });
       break;
 
     case "text": {
@@ -172,7 +237,7 @@ function handleEvent(event: SessionEvent): void {
       if (last?.kind === "text") {
         last.text += event.text;
       } else {
-        data.entries.push({ kind: "text", text: event.text });
+        data.entries.push({ kind: "text", text: event.text, ts: Date.now() });
       }
       break;
     }
@@ -185,6 +250,7 @@ function handleEvent(event: SessionEvent): void {
         status: "running",
         detail: summarizeInput(event.toolInput),
         toolInput: event.toolInput,
+        ts: Date.now(),
       });
       break;
 
@@ -193,6 +259,10 @@ function handleEvent(event: SessionEvent): void {
         const e = data.entries[i];
         if (e.kind === "tool" && e.toolUseId === event.toolUseId) {
           e.status = "done";
+          if (event.response != null) {
+            const raw = typeof event.response === "string" ? event.response : JSON.stringify(event.response, null, 2);
+            e.toolResult = raw.length > 4000 ? raw.slice(0, 4000) + "\n…(truncated)" : raw;
+          }
           break;
         }
       }
@@ -206,6 +276,7 @@ function handleEvent(event: SessionEvent): void {
         status: "blocked",
         detail: event.reason,
         toolInput: {},
+        ts: Date.now(),
       });
       break;
 
@@ -216,6 +287,7 @@ function handleEvent(event: SessionEvent): void {
         cost: event.cost,
         turns: event.turns,
         durationMs: event.durationMs,
+        ts: Date.now(),
       });
       break;
 
@@ -227,12 +299,16 @@ function handleEvent(event: SessionEvent): void {
       break;
 
     case "error":
-      data.entries.push({ kind: "system", text: `Error: ${event.message}` });
+      data.entries.push({ kind: "system", text: `Error: ${event.message}`, ts: Date.now() });
       break;
 
     case "exit":
       data.state = "dead";
-      data.entries.push({ kind: "system", text: "Session ended." });
+      data.entries.push({ kind: "system", text: "Session ended.", ts: Date.now() });
+      break;
+
+    case "nameChanged":
+      data.name = event.name;
       break;
   }
 

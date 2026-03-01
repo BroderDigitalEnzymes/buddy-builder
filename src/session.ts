@@ -62,6 +62,7 @@ export type Session = {
   get totalCost(): number;
 
   setToolPolicy(policy: ToolPolicy | null): void;
+  answerQuestion(toolUseId: string, answer: string): void;
   kill(): void;
   dispose(): Promise<void>;
 };
@@ -137,6 +138,9 @@ export async function createSession(
     return "allow";
   }
 
+  // ── Pending user questions (AskUserQuestion interception) ──
+  const pendingQuestions = new Map<string, (answer: string) => void>();
+
   // ── Hook server ──
   const hookServer: HookServer = await startHookServer({
     onPreToolUse: async (payload: PreToolUsePayload) => {
@@ -145,6 +149,23 @@ export async function createSession(
         toolInput: payload.tool_input,
         toolUseId: payload.tool_use_id,
       });
+
+      // Intercept AskUserQuestion: hold the hook response until the UI answers
+      if (payload.tool_name === "AskUserQuestion") {
+        const answer = await new Promise<string>((resolve) => {
+          pendingQuestions.set(payload.tool_use_id, resolve);
+        });
+        // Emit toolEnd so the UI shows the answer
+        emitter.emit("toolEnd", {
+          toolName: payload.tool_name,
+          toolInput: payload.tool_input,
+          response: answer,
+          toolUseId: payload.tool_use_id,
+        });
+        // Block with the answer — Claude receives it as feedback
+        return `block:User responded: ${answer}`;
+      }
+
       return resolveToolAction(payload);
     },
     onPostToolUse: (payload: PostToolUsePayload) => {
@@ -267,6 +288,14 @@ export async function createSession(
 
     setToolPolicy(policy: ToolPolicy | null): void {
       toolPolicy = policy;
+    },
+
+    answerQuestion(toolUseId: string, answer: string): void {
+      const resolve = pendingQuestions.get(toolUseId);
+      if (resolve) {
+        pendingQuestions.delete(toolUseId);
+        resolve(answer);
+      }
     },
 
     kill(): void {

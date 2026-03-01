@@ -3,25 +3,50 @@ import type {
   SessionState,
 } from "./schema.js";
 
+// ─── Chat entry types (shared between main + renderer) ────────────
+
+export type ChatEntry =
+  | { kind: "user"; text: string; ts: number }
+  | { kind: "text"; text: string; ts: number }
+  | { kind: "tool"; toolName: string; toolUseId: string; status: "running" | "done" | "blocked"; detail: string; toolInput: Record<string, unknown>; toolResult?: string; ts: number }
+  | { kind: "result"; cost: number; turns: number; durationMs: number; ts: number }
+  | { kind: "system"; text: string; ts: number };
+
+// ─── Persisted session (disk format) ──────────────────────────────
+
+export type PersistedSession = {
+  id: string;
+  claudeSessionId: string | null;
+  name: string;
+  permissionMode: PermissionMode;
+  policyPreset: PolicyPreset;
+  cost: number;
+  entries: ChatEntry[];
+  createdAt: number;
+  lastActiveAt: number;
+};
+
 // ─── Session Event (main → renderer, validated by zod in schema.ts) ─
 
 export type SessionEvent =
   | { kind: "ready"; sessionId: string; model: string; tools: string[] }
   | { kind: "text"; sessionId: string; text: string }
   | { kind: "toolStart"; sessionId: string; toolName: string; toolInput: Record<string, unknown>; toolUseId: string }
-  | { kind: "toolEnd"; sessionId: string; toolName: string; toolUseId: string }
+  | { kind: "toolEnd"; sessionId: string; toolName: string; toolUseId: string; response: unknown }
   | { kind: "toolBlocked"; sessionId: string; toolName: string; reason: string }
   | { kind: "result"; sessionId: string; text: string; cost: number; turns: number; durationMs: number }
   | { kind: "stateChange"; sessionId: string; from: string; to: string }
   | { kind: "warn"; sessionId: string; message: string }
   | { kind: "error"; sessionId: string; message: string }
-  | { kind: "exit"; sessionId: string; code: number | null };
+  | { kind: "exit"; sessionId: string; code: number | null }
+  | { kind: "nameChanged"; sessionId: string; name: string };
 
 export type SessionInfo = {
   readonly id: string;
   readonly name: string;
   readonly state: SessionState;
   readonly cost: number;
+  readonly claudeSessionId: string | null;
 };
 
 export const PermissionModes = ["default", "plan", "acceptEdits", "bypassPermissions"] as const;
@@ -48,6 +73,33 @@ export type CreateSessionOptions = {
   readonly permissionMode?: PermissionMode;
 };
 
+/** Map a UI permission mode to an initial tool policy preset. */
+export const PERMISSION_MODE_PRESETS: Record<PermissionMode, PolicyPreset> = {
+  bypassPermissions: "unrestricted",
+  acceptEdits: "allow-edits",
+  default: "no-writes",
+  plan: "read-only",
+};
+
+// ─── AskUserQuestion tool input (typed for rich rendering) ───────
+
+export type AskQuestionOption = {
+  readonly label: string;
+  readonly description: string;
+  readonly markdown?: string;
+};
+
+export type AskQuestionItem = {
+  readonly question: string;
+  readonly header: string;
+  readonly options: readonly AskQuestionOption[];
+  readonly multiSelect: boolean;
+};
+
+export type AskUserQuestionInput = {
+  readonly questions: readonly AskQuestionItem[];
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // THE CONTRACT — single source of truth for all IPC
 // ═══════════════════════════════════════════════════════════════════
@@ -59,14 +111,23 @@ export type AppConfig = {
 
 /** Invoke channels: renderer calls, main handles. */
 export type InvokeContract = {
-  createSession:  { in: CreateSessionOptions | undefined; out: string };
-  sendMessage:    { in: { sessionId: string; text: string }; out: void };
-  killSession:    { in: { sessionId: string }; out: void };
-  listSessions:   { in: undefined; out: SessionInfo[] };
-  updatePolicy:   { in: { sessionId: string; policy: ToolPolicyConfig }; out: void };
-  getPolicy:      { in: { sessionId: string }; out: ToolPolicyConfig };
-  getConfig:      { in: undefined; out: AppConfig };
-  setConfig:      { in: AppConfig; out: void };
+  createSession:     { in: CreateSessionOptions | undefined; out: string };
+  sendMessage:       { in: { sessionId: string; text: string }; out: void };
+  answerQuestion:    { in: { sessionId: string; toolUseId: string; answer: string }; out: void };
+  killSession:       { in: { sessionId: string }; out: void };
+  listSessions:      { in: undefined; out: SessionInfo[] };
+  updatePolicy:      { in: { sessionId: string; policy: ToolPolicyConfig }; out: void };
+  getPolicy:         { in: { sessionId: string }; out: ToolPolicyConfig };
+  renameSession:     { in: { sessionId: string; name: string }; out: void };
+  resumeSession:     { in: { sessionId: string }; out: void };
+  deleteSession:     { in: { sessionId: string }; out: void };
+  getSessionEntries: { in: { sessionId: string }; out: ChatEntry[] };
+  getConfig:         { in: undefined; out: AppConfig };
+  setConfig:         { in: AppConfig; out: void };
+  takeScreenshot:    { in: { filename?: string } | undefined; out: string };
+  winMinimize:       { in: undefined; out: void };
+  winMaximize:       { in: undefined; out: void };
+  winClose:          { in: undefined; out: void };
 };
 
 /** Event channels: main pushes, renderer listens. */
@@ -121,9 +182,11 @@ export type Pushers = EventPushers<EventContract>;
 
 /** Invoke channel names (must match InvokeContract keys). */
 export const INVOKE_CHANNELS = [
-  "createSession", "sendMessage", "killSession",
+  "createSession", "sendMessage", "answerQuestion", "killSession",
   "listSessions", "updatePolicy", "getPolicy",
-  "getConfig", "setConfig",
+  "renameSession", "resumeSession", "deleteSession", "getSessionEntries",
+  "getConfig", "setConfig", "takeScreenshot",
+  "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];
 
 /** Event channel names (must match EventContract keys). */

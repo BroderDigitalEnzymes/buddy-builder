@@ -29,13 +29,12 @@ export function buildArgs(
   if (config.systemPrompt) args.push("--system-prompt", config.systemPrompt);
   if (config.appendSystemPrompt) args.push("--append-system-prompt", config.appendSystemPrompt);
 
-  // bypassPermissions requires --dangerously-skip-permissions flag
-  if (config.permissionMode === "bypassPermissions") {
-    args.push("--dangerously-skip-permissions");
-  } else if (config.permissionMode) {
-    args.push("--permission-mode", config.permissionMode);
-  }
+  // Always bypass Claude's built-in permission prompts — they're designed
+  // for interactive terminals and hang when stdio is piped.
+  // We implement our own permission logic in the PreToolUse hook instead.
+  args.push("--dangerously-skip-permissions");
 
+  if (config.resumeSessionId) args.push("--resume", config.resumeSessionId);
   if (config.maxTurns != null) args.push("--max-turns", String(config.maxTurns));
   if (config.noSessionPersistence) args.push("--no-session-persistence");
 

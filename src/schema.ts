@@ -172,6 +172,7 @@ export const SessionConfigSchema = z.object({
   permissionMode: z
     .enum(["default", "plan", "acceptEdits", "bypassPermissions"])
     .optional(),
+  resumeSessionId: z.string().optional(),
   maxTurns: z.number().positive().optional(),
   noSessionPersistence: z.boolean().optional(),
   env: z.record(z.string(), z.string()).optional(),

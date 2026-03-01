@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   console.log(dim("Starting session..."));
 
   const session: Session = await createSession({
-    claudePath: String.raw`C:\Users\eran\.local\bin\claude.exe`,
+    permissionMode: "bypassPermissions",
   });
 
   let blockWrites = false;

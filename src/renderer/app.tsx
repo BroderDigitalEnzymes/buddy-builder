@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   useStoreVersion,
@@ -8,9 +8,14 @@ import {
   sendMessage,
   setPreset,
   killSession,
+  deleteSession,
+  renameSession,
+  resumeSession,
+  loadPersistedSessions,
 } from "./store.js";
 import {
-  TabBar,
+  TitleBar,
+  Sidebar,
   Toolbar,
   MessageList,
   StatusBar,
@@ -23,30 +28,53 @@ function App() {
   useStoreVersion();
   const { sessions, activeId } = getState();
 
+  // Load persisted sessions on mount
+  useEffect(() => {
+    loadPersistedSessions();
+  }, []);
+
   const activeSession = activeId ? sessions.get(activeId) ?? null : null;
   const sessionList = [...sessions.values()];
   const entries = activeSession?.entries ?? [];
   const canSend = !!activeSession && activeSession.state === "idle";
+  const showResume = !!activeSession && activeSession.state === "dead" && !!activeSession.claudeSessionId;
 
   const handleSwitch = useCallback((id: string) => switchSession(id), []);
-  const handleClose = useCallback((id: string) => killSession(id), []);
+  const handleKill = useCallback((id: string) => killSession(id), []);
+  const handleDelete = useCallback((id: string) => deleteSession(id), []);
+  const handleRename = useCallback((id: string, name: string) => renameSession(id, name), []);
   const handleCreate = useCallback((perm: PermissionMode) => createSession(perm), []);
   const handlePreset = useCallback((p: PolicyPreset) => setPreset(p), []);
   const handleSend = useCallback((text: string) => sendMessage(text), []);
+  const handleResume = useCallback(() => {
+    if (activeId) resumeSession(activeId);
+  }, [activeId]);
 
   return (
     <>
-      <TabBar
-        sessions={sessionList}
-        activeId={activeId}
-        onSwitch={handleSwitch}
-        onClose={handleClose}
-        onCreate={handleCreate}
-      />
-      <Toolbar session={activeSession} onSetPreset={handlePreset} />
-      <MessageList entries={entries} />
-      <StatusBar session={activeSession} />
-      <InputBar disabled={!canSend} onSend={handleSend} />
+      <TitleBar />
+      <div id="app-layout">
+        <Sidebar
+          sessions={sessionList}
+          activeId={activeId}
+          onSwitch={handleSwitch}
+          onKill={handleKill}
+          onDelete={handleDelete}
+          onRename={handleRename}
+          onCreate={handleCreate}
+        />
+        <div id="main-area">
+          <Toolbar session={activeSession} onSetPreset={handlePreset} />
+          <MessageList entries={entries} />
+          <StatusBar session={activeSession} />
+          <InputBar
+            disabled={!canSend}
+            showResume={showResume}
+            onSend={handleSend}
+            onResume={handleResume}
+          />
+        </div>
+      </div>
     </>
   );
 }

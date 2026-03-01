@@ -1,8 +1,56 @@
-import React, { memo, useState, useRef, useEffect, useCallback } from "react";
-import type { ChatEntry, SessionData } from "./store.js";
-import type { PolicyPreset, PermissionMode } from "../ipc.js";
+import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { marked } from "marked";
+import type { SessionData } from "./store.js";
+import type { ChatEntry, PolicyPreset, PermissionMode } from "../ipc.js";
+import { WindowControls } from "./window-controls.js";
+import { ToolViewTabs, getMatchingViews } from "./tool-views.js";
 
-// ─── Tool entry (collapsible) ────────────────────────────────────
+// Configure marked for safe, synchronous rendering
+marked.setOptions({ async: false, breaks: true });
+
+// ─── Sender helpers ──────────────────────────────────────────────
+
+type Sender = "user" | "claude" | "system";
+
+function getSender(kind: ChatEntry["kind"]): Sender {
+  switch (kind) {
+    case "user": return "user";
+    case "text":
+    case "tool": return "claude";
+    case "system":
+    case "result": return "system";
+  }
+}
+
+function formatTime(ts: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+}
+
+const SENDER_LABELS: Record<Sender, string> = {
+  user: "You",
+  claude: "Claude",
+  system: "System",
+};
+
+const SENDER_INITIALS: Record<Sender, string> = {
+  user: "Y",
+  claude: "C",
+  system: "S",
+};
+
+const AVATAR_CLASSES: Record<Sender, string> = {
+  user: "msg-avatar msg-avatar-user",
+  claude: "msg-avatar msg-avatar-claude",
+  system: "msg-avatar msg-avatar-system",
+};
+
+// ─── Tool entry (collapsible, delegates to view registry) ────────
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   running: <span className="tool-icon spinning" />,
@@ -15,8 +63,16 @@ type ToolEntryProps = {
 };
 
 export function ToolEntry({ entry }: ToolEntryProps) {
+  const matchedViews = getMatchingViews(entry);
+  const topView = matchedViews[0];
+
+  // Full-replace: custom view takes over entirely (e.g., AskUserQuestion)
+  if (topView?.fullReplace) {
+    return <ToolViewTabs entry={entry} />;
+  }
+
+  // Standard: collapsible <details> with view tabs inside
   const [open, setOpen] = useState(entry.status === "running");
-  const hasInput = Object.keys(entry.toolInput).length > 0;
 
   return (
     <details
@@ -29,28 +85,33 @@ export function ToolEntry({ entry }: ToolEntryProps) {
         <span className="tool-name">{entry.toolName}</span>
         {entry.detail && <span className="tool-detail">{entry.detail}</span>}
       </summary>
-      {hasInput && (
-        <pre className="tool-input"><code>{JSON.stringify(entry.toolInput, null, 2)}</code></pre>
-      )}
+      <ToolViewTabs entry={entry} />
     </details>
   );
 }
 
-// ─── Message entry (text / user / system / result / tool) ────────
+// ─── Markdown text renderer ──────────────────────────────────────
 
-type EntryRowProps = {
+function MarkdownText({ text }: { text: string }) {
+  const html = useMemo(() => marked.parse(text) as string, [text]);
+  return <div className="msg-text prose" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+// ─── Entry content (inner content without layout wrapper) ────────
+
+type EntryContentProps = {
   entry: ChatEntry;
   prevKind?: string;
   nextKind?: string;
 };
 
-export function EntryRow({ entry, prevKind, nextKind }: EntryRowProps) {
+function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
   switch (entry.kind) {
     case "user":
-      return <div className="msg msg-user">{entry.text}</div>;
+      return <div className="msg-text">{entry.text}</div>;
 
     case "text":
-      return <div className="msg msg-assistant">{entry.text}</div>;
+      return <MarkdownText text={entry.text} />;
 
     case "tool": {
       const classes = ["tool-wrap"];
@@ -65,23 +126,67 @@ export function EntryRow({ entry, prevKind, nextKind }: EntryRowProps) {
       );
     }
 
-    case "result":
-      return (
-        <div className="msg msg-result">
-          <hr className="result-line" />
-          <span className="result-meta">
-            ${entry.cost.toFixed(4)} &middot; {entry.turns} turns &middot; {(entry.durationMs / 1000).toFixed(1)}s
-          </span>
-          <hr className="result-line" />
-        </div>
-      );
-
-    case "system":
-      return <div className="msg msg-system">{entry.text}</div>;
+    default:
+      return null;
   }
 }
 
-// ─── Message list with auto-scroll ──────────────────────────────
+// ─── Message entry (Slack-style row) ─────────────────────────────
+
+type EntryRowProps = {
+  entry: ChatEntry;
+  isGroupStart: boolean;
+  prevKind?: string;
+  nextKind?: string;
+};
+
+export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowProps) {
+  const sender = getSender(entry.kind);
+
+  // System messages: centered pill
+  if (entry.kind === "system") {
+    return (
+      <div className="msg-row msg-row-system">
+        <div className="msg-system-text">{entry.text}</div>
+      </div>
+    );
+  }
+
+  // Result: skip rendering (cost shown in status bar)
+  if (entry.kind === "result") {
+    return null;
+  }
+
+  // Group start: avatar + name + timestamp + content
+  if (isGroupStart) {
+    return (
+      <div className="msg-row msg-row-first">
+        <div className={AVATAR_CLASSES[sender]}>
+          {SENDER_INITIALS[sender]}
+        </div>
+        <div className="msg-content">
+          <div className="msg-header">
+            <span className="msg-sender">{SENDER_LABELS[sender]}</span>
+            <span className="msg-timestamp">{formatTime(entry.ts)}</span>
+          </div>
+          <EntryContent entry={entry} prevKind={prevKind} nextKind={nextKind} />
+        </div>
+      </div>
+    );
+  }
+
+  // Continuation: hover timestamp + content only
+  return (
+    <div className="msg-row msg-row-continuation">
+      <span className="msg-timestamp-hover">{formatTime(entry.ts)}</span>
+      <div className="msg-content">
+        <EntryContent entry={entry} prevKind={prevKind} nextKind={nextKind} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Message list with auto-scroll + grouping ────────────────────
 
 type MessageListProps = {
   entries: ChatEntry[];
@@ -106,7 +211,7 @@ export function MessageList({ entries }: MessageListProps) {
 
   if (entries.length === 0) {
     return (
-      <div id="chat" ref={containerRef}>
+      <div id="chat" className="chat-empty" ref={containerRef}>
         <div className="empty-state">No session. Click <strong>+ New</strong> to start.</div>
       </div>
     );
@@ -115,14 +220,28 @@ export function MessageList({ entries }: MessageListProps) {
   return (
     <div id="chat" ref={containerRef} onScroll={onScroll}>
       <div id="messages">
-        {entries.map((entry, i) => (
-          <EntryRow
-            key={i}
-            entry={entry}
-            prevKind={entries[i - 1]?.kind}
-            nextKind={entries[i + 1]?.kind}
-          />
-        ))}
+        {entries.map((entry, i) => {
+          const prevEntry = entries[i - 1];
+          const sender = getSender(entry.kind);
+          const prevSender = prevEntry ? getSender(prevEntry.kind) : null;
+
+          const isGroupStart =
+            i === 0 ||
+            sender !== prevSender ||
+            sender === "system" ||
+            entry.kind === "result" ||
+            (entry.ts - (prevEntry?.ts ?? 0)) > 5 * 60 * 1000;
+
+          return (
+            <EntryRow
+              key={i}
+              entry={entry}
+              isGroupStart={isGroupStart}
+              prevKind={entries[i - 1]?.kind}
+              nextKind={entries[i + 1]?.kind}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -189,43 +308,122 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   );
 }
 
-// ─── Tab bar ─────────────────────────────────────────────────────
+// ─── Title bar (drag region + window controls) ───────────────────
 
-type TabBarProps = {
+export const TitleBar = memo(function TitleBar() {
+  return (
+    <div id="title-bar">
+      <span id="title-bar-label">Buddy Builder</span>
+      <WindowControls />
+    </div>
+  );
+});
+
+// ─── Editable session label ───────────────────────────────────────
+
+type EditableSessionLabelProps = {
+  name: string;
+  onRename: (name: string) => void;
+};
+
+function EditableSessionLabel({ name, onRename }: EditableSessionLabelProps) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setValue(name); }, [name]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const save = useCallback(() => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== name) {
+      onRename(trimmed);
+    } else {
+      setValue(name);
+    }
+  }, [value, name, onRename]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); }
+    if (e.key === "Escape") { setEditing(false); setValue(name); }
+  }, [save, name]);
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="session-label-input"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={handleKeyDown}
+        onClick={(e) => e.stopPropagation()}
+      />
+    );
+  }
+
+  return (
+    <span
+      className="session-label"
+      onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}
+    >
+      {name}
+    </span>
+  );
+}
+
+// ─── Sidebar (session list + new session + settings) ─────────────
+
+type SidebarProps = {
   sessions: SessionData[];
   activeId: string | null;
   onSwitch: (id: string) => void;
-  onClose: (id: string) => void;
+  onKill: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
   onCreate: (perm: PermissionMode) => void;
 };
 
-export const TabBar = memo(function TabBar({ sessions, activeId, onSwitch, onClose, onCreate }: TabBarProps) {
+export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onKill, onDelete, onRename, onCreate }: SidebarProps) {
   const [perm, setPerm] = useState<PermissionMode>("default");
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <>
-      <div id="tabs">
-        <div id="tab-list">
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              className={`tab ${s.id === activeId ? "active" : ""}`}
-              onClick={() => onSwitch(s.id)}
-            >
-              <span className={`tab-dot state-${s.state}`} />
-              <span className="tab-label">{s.name}</span>
-              <span
-                className="tab-close"
-                title="Close session"
-                onClick={(e) => { e.stopPropagation(); onClose(s.id); }}
+      <div id="sidebar">
+        <div id="session-list">
+          {sessions.map((s) => {
+            const isDead = s.state === "dead";
+            return (
+              <button
+                key={s.id}
+                className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""}`}
+                onClick={() => onSwitch(s.id)}
               >
-                &times;
-              </span>
-            </button>
-          ))}
+                <span className={`session-dot state-${s.state}`} />
+                <EditableSessionLabel
+                  name={s.name}
+                  onRename={(name) => onRename(s.id, name)}
+                />
+                <span
+                  className="session-close"
+                  title={isDead ? "Delete session" : "Close session"}
+                  onClick={(e) => { e.stopPropagation(); isDead ? onDelete(s.id) : onKill(s.id); }}
+                >
+                  &times;
+                </span>
+              </button>
+            );
+          })}
         </div>
-        <div id="new-session-group">
+        <div id="sidebar-actions">
           <select
             id="perm-mode"
             value={perm}
@@ -237,8 +435,10 @@ export const TabBar = memo(function TabBar({ sessions, activeId, onSwitch, onClo
             <option value="plan">Plan Only</option>
           </select>
           <button id="new-session" onClick={() => onCreate(perm)}>+ New</button>
-          <button id="settings-btn" title="Settings" onClick={() => setSettingsOpen(true)}>&#9881;</button>
         </div>
+        <button id="settings-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
+          &#9881; Settings
+        </button>
       </div>
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>
@@ -308,11 +508,14 @@ export const StatusBar = memo(function StatusBar({ session }: StatusBarProps) {
 
 type InputBarProps = {
   disabled: boolean;
+  showResume: boolean;
   onSend: (text: string) => void;
+  onResume: () => void;
 };
 
-export const InputBar = memo(function InputBar({ disabled, onSend }: InputBarProps) {
+export const InputBar = memo(function InputBar({ disabled, showResume, onSend, onResume }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const prevDisabled = useRef(disabled);
 
   const handleSend = useCallback(() => {
     const el = ref.current;
@@ -322,7 +525,17 @@ export const InputBar = memo(function InputBar({ disabled, onSend }: InputBarPro
     el.value = "";
     el.style.height = "auto";
     onSend(text);
+    // Re-focus after send
+    requestAnimationFrame(() => el.focus());
   }, [onSend]);
+
+  // Re-focus when session goes from busy → idle
+  useEffect(() => {
+    if (prevDisabled.current && !disabled) {
+      ref.current?.focus();
+    }
+    prevDisabled.current = disabled;
+  }, [disabled]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -338,12 +551,22 @@ export const InputBar = memo(function InputBar({ disabled, onSend }: InputBarPro
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   }, []);
 
+  if (showResume) {
+    return (
+      <div id="input-bar">
+        <button className="resume-btn" onClick={onResume}>
+          Resume Session
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div id="input-bar">
       <textarea
         ref={ref}
         id="input"
-        placeholder="Type a message..."
+        placeholder="Message Claude..."
         rows={1}
         disabled={disabled}
         onKeyDown={handleKeyDown}
