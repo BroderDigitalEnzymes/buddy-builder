@@ -52,6 +52,11 @@ export type CreateSessionOptions = {
 // THE CONTRACT — single source of truth for all IPC
 // ═══════════════════════════════════════════════════════════════════
 
+/** App config (persisted to disk). */
+export type AppConfig = {
+  claudePath: string;
+};
+
 /** Invoke channels: renderer calls, main handles. */
 export type InvokeContract = {
   createSession:  { in: CreateSessionOptions | undefined; out: string };
@@ -60,6 +65,8 @@ export type InvokeContract = {
   listSessions:   { in: undefined; out: SessionInfo[] };
   updatePolicy:   { in: { sessionId: string; policy: ToolPolicyConfig }; out: void };
   getPolicy:      { in: { sessionId: string }; out: ToolPolicyConfig };
+  getConfig:      { in: undefined; out: AppConfig };
+  setConfig:      { in: AppConfig; out: void };
 };
 
 /** Event channels: main pushes, renderer listens. */
@@ -116,6 +123,7 @@ export type Pushers = EventPushers<EventContract>;
 export const INVOKE_CHANNELS = [
   "createSession", "sendMessage", "killSession",
   "listSessions", "updatePolicy", "getPolicy",
+  "getConfig", "setConfig",
 ] as const satisfies readonly (keyof InvokeContract)[];
 
 /** Event channel names (must match EventContract keys). */

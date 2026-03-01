@@ -83,7 +83,7 @@ export type SessionManager = {
   dispose(): Promise<void>;
 };
 
-export function createSessionManager(sink: EventSink): SessionManager {
+export function createSessionManager(sink: EventSink, claudePath: string): SessionManager {
   const sessions = new Map<string, ManagedSession>();
   let counter = 0;
 
@@ -99,7 +99,7 @@ export function createSessionManager(sink: EventSink): SessionManager {
       counter++;
 
       const config: SessionConfig = {
-        claudePath: String.raw`C:\Users\eran\.local\bin\claude.exe`,
+        claudePath,
         permissionMode: options?.permissionMode ?? "default",
       };
 

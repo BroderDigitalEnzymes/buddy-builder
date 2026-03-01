@@ -128,6 +128,67 @@ export function MessageList({ entries }: MessageListProps) {
   );
 }
 
+// ─── Settings modal ──────────────────────────────────────────────
+
+type SettingsModalProps = {
+  open: boolean;
+  onClose: () => void;
+};
+
+export function SettingsModal({ open, onClose }: SettingsModalProps) {
+  const [claudePath, setClaudePath] = useState("");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      (window as any).claude.getConfig().then((cfg: any) => setClaudePath(cfg.claudePath));
+      setStatus("");
+    }
+  }, [open]);
+
+  const handleSave = useCallback(async () => {
+    try {
+      await (window as any).claude.setConfig({ claudePath });
+      setStatus("Saved. Restart sessions for changes to take effect.");
+    } catch (err) {
+      setStatus(`Error: ${err}`);
+    }
+  }, [claudePath]);
+
+  if (!open) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">Settings</span>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <label className="setting-label">
+            Claude CLI path
+            <input
+              className="setting-input"
+              type="text"
+              value={claudePath}
+              onChange={(e) => setClaudePath(e.target.value)}
+              placeholder="claude"
+              spellCheck={false}
+            />
+            <span className="setting-hint">
+              Command name (e.g. "claude") or full path to executable
+            </span>
+          </label>
+          {status && <div className="setting-status">{status}</div>}
+        </div>
+        <div className="modal-footer">
+          <button className="modal-btn" onClick={handleSave}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab bar ─────────────────────────────────────────────────────
 
 type TabBarProps = {
@@ -140,42 +201,47 @@ type TabBarProps = {
 
 export const TabBar = memo(function TabBar({ sessions, activeId, onSwitch, onClose, onCreate }: TabBarProps) {
   const [perm, setPerm] = useState<PermissionMode>("default");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <div id="tabs">
-      <div id="tab-list">
-        {sessions.map((s) => (
-          <button
-            key={s.id}
-            className={`tab ${s.id === activeId ? "active" : ""}`}
-            onClick={() => onSwitch(s.id)}
-          >
-            <span className={`tab-dot state-${s.state}`} />
-            <span className="tab-label">{s.name}</span>
-            <span
-              className="tab-close"
-              title="Close session"
-              onClick={(e) => { e.stopPropagation(); onClose(s.id); }}
+    <>
+      <div id="tabs">
+        <div id="tab-list">
+          {sessions.map((s) => (
+            <button
+              key={s.id}
+              className={`tab ${s.id === activeId ? "active" : ""}`}
+              onClick={() => onSwitch(s.id)}
             >
-              &times;
-            </span>
-          </button>
-        ))}
+              <span className={`tab-dot state-${s.state}`} />
+              <span className="tab-label">{s.name}</span>
+              <span
+                className="tab-close"
+                title="Close session"
+                onClick={(e) => { e.stopPropagation(); onClose(s.id); }}
+              >
+                &times;
+              </span>
+            </button>
+          ))}
+        </div>
+        <div id="new-session-group">
+          <select
+            id="perm-mode"
+            value={perm}
+            onChange={(e) => setPerm(e.target.value as PermissionMode)}
+          >
+            <option value="bypassPermissions">Bypass Permissions</option>
+            <option value="acceptEdits">Auto-Accept Edits</option>
+            <option value="default">Default</option>
+            <option value="plan">Plan Only</option>
+          </select>
+          <button id="new-session" onClick={() => onCreate(perm)}>+ New</button>
+          <button id="settings-btn" title="Settings" onClick={() => setSettingsOpen(true)}>&#9881;</button>
+        </div>
       </div>
-      <div id="new-session-group">
-        <select
-          id="perm-mode"
-          value={perm}
-          onChange={(e) => setPerm(e.target.value as PermissionMode)}
-        >
-          <option value="bypassPermissions">Bypass Permissions</option>
-          <option value="acceptEdits">Auto-Accept Edits</option>
-          <option value="default">Default</option>
-          <option value="plan">Plan Only</option>
-        </select>
-        <button id="new-session" onClick={() => onCreate(perm)}>+ New</button>
-      </div>
-    </div>
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
   );
 });
 

@@ -8,6 +8,7 @@ import {
   type Pushers,
 } from "../ipc.js";
 import { createSessionManager, type SessionManager } from "./manager.js";
+import { loadConfig, saveConfig } from "./config.js";
 
 const TEST_MODE = process.env.BUDDY_TEST === "1";
 
@@ -77,6 +78,8 @@ function setupIpc(mgr: SessionManager): void {
     listSessions:  () => mgr.list(),
     updatePolicy:  ({ sessionId, policy }) => { mgr.updatePolicy(sessionId, policy); },
     getPolicy:     ({ sessionId }) => mgr.getPolicy(sessionId),
+    getConfig:     () => loadConfig(),
+    setConfig:     (config) => { saveConfig(config); },
   };
 
   registerHandlers(
@@ -88,7 +91,8 @@ function setupIpc(mgr: SessionManager): void {
 // ─── App lifecycle ──────────────────────────────────────────────
 
 app.whenReady().then(() => {
-  manager = createSessionManager((event) => push?.sessionEvent(event));
+  const config = loadConfig();
+  manager = createSessionManager((event) => push?.sessionEvent(event), config.claudePath);
   setupIpc(manager);
   createWindow();
 
