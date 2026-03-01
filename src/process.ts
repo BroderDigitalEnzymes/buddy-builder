@@ -28,7 +28,14 @@ export function buildArgs(
   if (config.model) args.push("--model", config.model);
   if (config.systemPrompt) args.push("--system-prompt", config.systemPrompt);
   if (config.appendSystemPrompt) args.push("--append-system-prompt", config.appendSystemPrompt);
-  if (config.permissionMode) args.push("--permission-mode", config.permissionMode);
+
+  // bypassPermissions requires --dangerously-skip-permissions flag
+  if (config.permissionMode === "bypassPermissions") {
+    args.push("--dangerously-skip-permissions");
+  } else if (config.permissionMode) {
+    args.push("--permission-mode", config.permissionMode);
+  }
+
   if (config.maxTurns != null) args.push("--max-turns", String(config.maxTurns));
   if (config.noSessionPersistence) args.push("--no-session-persistence");
 
