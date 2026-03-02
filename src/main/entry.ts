@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
+import { spawn as spawnChild } from "child_process";
 import {
   registerHandlers,
   createPushProxy,
@@ -99,6 +100,15 @@ function setupIpc(mgr: SessionManager): void {
     getPolicy:         ({ sessionId }) => mgr.getPolicy(sessionId),
     renameSession:     ({ sessionId, name }) => { mgr.rename(sessionId, name); },
     resumeSession:     ({ sessionId }) => mgr.resume(sessionId),
+    resumeInTerminal:  ({ sessionId }) => {
+      const { claudeSessionId, cwd } = mgr.getResumeInfo(sessionId);
+      const dir = cwd ?? process.env.HOME ?? "~";
+      const cmd = `cd ${dir} && claude --resume ${claudeSessionId}`;
+      spawnChild("osascript", [
+        "-e", `tell application "Terminal" to activate`,
+        "-e", `tell application "Terminal" to do script ${JSON.stringify(cmd)}`,
+      ], { detached: true, stdio: "ignore" });
+    },
     deleteSession:     ({ sessionId }) => { mgr.remove(sessionId); },
     getSessionEntries: ({ sessionId }) => mgr.getEntries(sessionId),
     getConfig:         () => loadConfig(),

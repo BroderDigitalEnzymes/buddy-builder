@@ -38,10 +38,24 @@ const SENDER_LABELS: Record<Sender, string> = {
   system: "System",
 };
 
-const SENDER_INITIALS: Record<Sender, string> = {
-  user: "Y",
-  claude: "C",
-  system: "S",
+const SENDER_ICONS: Record<Sender, React.ReactNode> = {
+  user: (
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="5" r="3" />
+      <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+    </svg>
+  ),
+  claude: (
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13l-1.8-4.2L2 7l4.2-1.8z" />
+    </svg>
+  ),
+  system: (
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="8" r="2" />
+      <path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M13 3l-2 2M5 11l-2 2" strokeWidth="1.5" stroke="#fff" fill="none" />
+    </svg>
+  ),
 };
 
 const AVATAR_CLASSES: Record<Sender, string> = {
@@ -147,11 +161,12 @@ function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
 type EntryRowProps = {
   entry: ChatEntry;
   isGroupStart: boolean;
+  isThinking?: boolean;
   prevKind?: string;
   nextKind?: string;
 };
 
-export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowProps) {
+export function EntryRow({ entry, isGroupStart, prevKind, nextKind, isThinking }: EntryRowProps) {
   const sender = getSender(entry.kind);
 
   // System messages: centered pill
@@ -168,12 +183,14 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowPr
     return null;
   }
 
+  const avatarClass = AVATAR_CLASSES[sender] + (isThinking ? " msg-avatar-thinking" : "");
+
   // Group start: avatar + name + timestamp + content
   if (isGroupStart) {
     return (
       <div className="msg-row msg-row-first">
-        <div className={AVATAR_CLASSES[sender]}>
-          {SENDER_INITIALS[sender]}
+        <div className={avatarClass}>
+          {SENDER_ICONS[sender]}
         </div>
         <div className="msg-content">
           <div className="msg-header">
@@ -201,9 +218,10 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowPr
 
 type MessageListProps = {
   entries: ChatEntry[];
+  isBusy?: boolean;
 };
 
-export function MessageList({ entries }: MessageListProps) {
+export function MessageList({ entries, isBusy }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
@@ -218,7 +236,7 @@ export function MessageList({ entries }: MessageListProps) {
       const el = containerRef.current;
       if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
-  }, [entries, entries.length > 0 ? entries[entries.length - 1] : null]);
+  }, [entries, entries.length > 0 ? entries[entries.length - 1] : null, isBusy]);
 
   if (entries.length === 0) {
     return (
@@ -226,6 +244,20 @@ export function MessageList({ entries }: MessageListProps) {
         <div className="empty-state">No session. Click <strong>+ New</strong> to start.</div>
       </div>
     );
+  }
+
+  // Find the last claude group-start index for thinking animation
+  let lastClaudeGroupIdx = -1;
+  if (isBusy) {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (getSender(entries[i].kind) === "claude") {
+        // Walk back to find the group start
+        let j = i;
+        while (j > 0 && getSender(entries[j - 1].kind) === "claude") j--;
+        lastClaudeGroupIdx = j;
+        break;
+      }
+    }
   }
 
   return (
@@ -248,11 +280,20 @@ export function MessageList({ entries }: MessageListProps) {
               key={i}
               entry={entry}
               isGroupStart={isGroupStart}
+              isThinking={isBusy && isGroupStart && i === lastClaudeGroupIdx}
               prevKind={entries[i - 1]?.kind}
               nextKind={entries[i + 1]?.kind}
             />
           );
         })}
+        {isBusy && (
+          <div className="msg-row thinking-row">
+            <div className="msg-avatar-spacer" />
+            <div className="thinking-dots">
+              <span /><span /><span />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -781,9 +822,10 @@ type InputBarProps = {
   showResume: boolean;
   onSend: (text: string, images?: ImageData[]) => void;
   onResume: () => void;
+  onResumeTerminal: () => void;
 };
 
-export const InputBar = memo(function InputBar({ disabled, showResume, onSend, onResume }: InputBarProps) {
+export const InputBar = memo(function InputBar({ disabled, showResume, onSend, onResume, onResumeTerminal }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const prevDisabled = useRef(disabled);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
@@ -848,9 +890,17 @@ export const InputBar = memo(function InputBar({ disabled, showResume, onSend, o
   if (showResume) {
     return (
       <div id="input-bar">
-        <button className="resume-btn" onClick={onResume}>
-          Resume Session
-        </button>
+        <div className="resume-actions">
+          <button className="resume-btn" onClick={onResume}>
+            Resume Session
+          </button>
+          <button className="resume-terminal-btn" onClick={onResumeTerminal} title="Resume in Terminal">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+              <path d="M2 3l5 4-5 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="9" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </div>
     );
   }

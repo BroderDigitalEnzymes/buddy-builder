@@ -113,6 +113,7 @@ export type InvokeContract = {
   getPolicy:         { in: { sessionId: string }; out: ToolPolicyConfig };
   renameSession:     { in: { sessionId: string; name: string }; out: void };
   resumeSession:     { in: { sessionId: string }; out: void };
+  resumeInTerminal:  { in: { sessionId: string }; out: void };
   deleteSession:     { in: { sessionId: string }; out: void };
   getSessionEntries: { in: { sessionId: string }; out: ChatEntry[] };
   getConfig:         { in: undefined; out: AppConfig };
@@ -177,7 +178,7 @@ export type Pushers = EventPushers<EventContract>;
 export const INVOKE_CHANNELS = [
   "createSession", "sendMessage", "answerQuestion", "killSession",
   "listSessions", "updatePolicy", "getPolicy",
-  "renameSession", "resumeSession", "deleteSession", "getSessionEntries",
+  "renameSession", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
   "getConfig", "setConfig", "takeScreenshot",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];

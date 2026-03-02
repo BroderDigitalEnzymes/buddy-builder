@@ -700,17 +700,20 @@ body {
 /* ─── Avatar ─── */
 
 .msg-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 15px;
-  color: #fff;
   flex-shrink: 0;
   line-height: 1;
+}
+
+.msg-avatar svg {
+  width: 12px;
+  height: 12px;
+  fill: #fff;
 }
 
 .msg-avatar-user { background: var(--avatar-user); }
@@ -718,8 +721,48 @@ body {
 .msg-avatar-system { background: var(--avatar-system); }
 
 .msg-avatar-spacer {
-  width: 36px;
+  width: 22px;
   flex-shrink: 0;
+}
+
+/* Thinking animation on Claude's avatar */
+.msg-avatar-thinking {
+  animation: thinking-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes thinking-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 30, 90, 0); }
+  50% { box-shadow: 0 0 8px 3px rgba(224, 30, 90, 0.4); }
+}
+
+/* Thinking dots indicator */
+.thinking-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes thinking-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
 }
 
 /* ─── Content column ─── */
@@ -1409,6 +1452,31 @@ body {
 .resume-btn:hover {
   background: var(--accent);
   color: #fff;
+}
+
+.resume-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.resume-terminal-btn {
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.resume-terminal-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+  background: var(--bg-2);
 }
 
 /* ═══ Window controls (frameless) ═════════════════════════════ */

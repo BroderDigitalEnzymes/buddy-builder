@@ -123,6 +123,7 @@ export type SessionManager = {
   remove(id: string): void;
   rename(id: string, name: string): void;
   resume(id: string): Promise<void>;
+  getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null };
   list(): SessionInfo[];
   getEntries(id: string): ChatEntry[];
   updatePolicy(id: string, policy: ToolPolicyConfig): void;
@@ -288,6 +289,12 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
       // Emit stateChange so renderer picks up the alive state
       sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });
+    },
+
+    getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null } {
+      const managed = getManaged(id);
+      if (!managed.claudeSessionId) throw new Error("No Claude session ID to resume");
+      return { claudeSessionId: managed.claudeSessionId, cwd: managed.cwd };
     },
 
     list(): SessionInfo[] {

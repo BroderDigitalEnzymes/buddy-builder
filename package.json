@@ -7,7 +7,7 @@
     "cli": "npx tsx src/cli.ts",
     "build": "node scripts/build.js",
     "start": "npm run build && npx electron .",
-    "dev": "npm run build && npx electron .",
+    "dev": "node scripts/build.js --watch & npx electronmon .",
     "probe": "npx tsx src/probe.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -21,6 +21,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "electron": "^40.6.1",
+    "electronmon": "^2.0.4",
     "esbuild": "^0.27.3",
     "playwright": "^1.58.2",
     "tsx": "^4.21.0",

@@ -11,6 +11,7 @@ import {
   deleteSession,
   renameSession,
   resumeSession,
+  resumeInTerminal,
   toggleFavorite,
   loadPersistedSessions,
 } from "./store.js";
@@ -52,6 +53,9 @@ function App() {
   const handleResume = useCallback(() => {
     if (activeId) resumeSession(activeId);
   }, [activeId]);
+  const handleResumeTerminal = useCallback(() => {
+    if (activeId) resumeInTerminal(activeId);
+  }, [activeId]);
 
   return (
     <>
@@ -68,12 +72,13 @@ function App() {
         />
         <div id="main-area">
           <ChatHeader session={activeSession} onSetPreset={handlePreset} onToggleFavorite={handleToggleFavorite} />
-          <MessageList entries={entries} />
+          <MessageList entries={entries} isBusy={activeSession?.state === "busy"} />
           <InputBar
             disabled={!canSend}
             showResume={showResume}
             onSend={handleSend}
             onResume={handleResume}
+            onResumeTerminal={handleResumeTerminal}
           />
         </div>
       </div>

@@ -229,6 +229,18 @@ export async function resumeSession(id: string): Promise<void> {
   }
 }
 
+export async function resumeInTerminal(id: string): Promise<void> {
+  try {
+    await api().resumeInTerminal({ sessionId: id });
+  } catch (err) {
+    const data = state.sessions.get(id);
+    if (data) {
+      data.entries.push({ kind: "system", text: `Open terminal failed: ${err}`, ts: Date.now() });
+      emit();
+    }
+  }
+}
+
 // ─── Event handling ──────────────────────────────────────────────
 
 function handleEvent(event: SessionEvent): void {
