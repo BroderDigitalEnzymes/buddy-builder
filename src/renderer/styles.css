@@ -1374,35 +1374,81 @@ body {
   width: 480px;
   max-width: 90vw;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.modal-title {
-  font-weight: 600;
-  font-size: 15px;
+  position: relative;
+  overflow: hidden;
 }
 
 .modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 20px;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 2px 6px;
   line-height: 1;
+  z-index: 1;
+  border-radius: var(--radius);
+  transition: background 0.15s, color 0.15s;
 }
 
-.modal-close:hover { color: var(--text); }
+.modal-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 
 .modal-body {
   padding: 18px;
+}
+
+/* ─── Settings hero / branding ─── */
+
+.settings-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 36px 24px 24px;
+  background: linear-gradient(180deg, rgba(0, 168, 232, 0.08) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 168, 232, 0.25);
+  margin-bottom: 16px;
+}
+
+.settings-brand {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+}
+
+.settings-tagline {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.settings-section {
+  margin-bottom: 8px;
+}
+
+.settings-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.settings-version {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-right: auto;
 }
 
 .setting-label {

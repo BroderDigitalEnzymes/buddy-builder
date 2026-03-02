@@ -289,29 +289,35 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span className="modal-title">Settings</span>
-          <button className="modal-close" onClick={onClose}>&times;</button>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
+        <div className="settings-hero">
+          <img className="settings-logo" src="../assets/icon-256.png" alt="Buddy Builder" />
+          <div className="settings-brand">Buddy Builder</div>
+          <div className="settings-tagline">Your AI pair programming companion</div>
         </div>
         <div className="modal-body">
-          <label className="setting-label">
-            Claude CLI path
-            <input
-              className="setting-input"
-              type="text"
-              value={claudePath}
-              onChange={(e) => setClaudePath(e.target.value)}
-              placeholder="claude"
-              spellCheck={false}
-            />
-            <span className="setting-hint">
-              Command name (e.g. "claude") or full path to executable
-            </span>
-          </label>
+          <div className="settings-section">
+            <div className="settings-section-title">Configuration</div>
+            <label className="setting-label">
+              Claude CLI path
+              <input
+                className="setting-input"
+                type="text"
+                value={claudePath}
+                onChange={(e) => setClaudePath(e.target.value)}
+                placeholder="claude"
+                spellCheck={false}
+              />
+              <span className="setting-hint">
+                Command name (e.g. "claude") or full path to executable
+              </span>
+            </label>
+          </div>
           {status && <div className="setting-status">{status}</div>}
         </div>
         <div className="modal-footer">
+          <span className="settings-version">v1.0.0</span>
           <button className="modal-btn" onClick={handleSave}>Save</button>
         </div>
       </div>
