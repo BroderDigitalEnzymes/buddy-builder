@@ -228,14 +228,7 @@ export async function createSession(
       }
     },
     (line) => {
-      // Unknown stdout line — could be a new message type
-      try {
-        const json = JSON.parse(line);
-        if (json.type) {
-          // Known-unknown: log for debugging, don't crash
-          // console.debug(`[session] unknown message type: ${json.type}`);
-        }
-      } catch { /* not JSON, ignore */ }
+      console.log(`[DEBUG stdout unknown] ${line}`);
     },
   );
 
@@ -243,6 +236,7 @@ export async function createSession(
   proc.stderr!.on("data", (chunk: Buffer) => {
     const text = chunk.toString().trim();
     if (text) {
+      console.log(`[DEBUG stderr] ${text}`);
       emitter.emit("warn", text);
     }
   });

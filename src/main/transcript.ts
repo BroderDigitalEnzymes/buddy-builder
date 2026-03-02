@@ -10,6 +10,7 @@ export type SessionStub = {
   claudeSessionId: string;
   transcriptPath: string;
   projectName: string;
+  cwd: string | null;
   firstPrompt: string;
   slug: string;
   createdAt: number;
@@ -126,6 +127,7 @@ function extractStub(filePath: string, projectName: string): SessionStub | null 
   if (lines.length === 0) return null;
 
   let sessionId: string | null = null;
+  let cwd: string | null = null;
   let firstPrompt = "";
   let slug = "";
   let createdAt = 0;
@@ -137,6 +139,7 @@ function extractStub(filePath: string, projectName: string): SessionStub | null 
     try {
       const obj = JSON.parse(line);
       if (obj.sessionId && !sessionId) sessionId = obj.sessionId;
+      if (obj.cwd && !cwd) cwd = obj.cwd;
       if (obj.slug && !slug) slug = obj.slug;
       if (obj.timestamp && !createdAt) createdAt = new Date(obj.timestamp).getTime();
 
@@ -160,6 +163,7 @@ function extractStub(filePath: string, projectName: string): SessionStub | null 
     claudeSessionId: sessionId,
     transcriptPath: filePath,
     projectName,
+    cwd,
     firstPrompt: firstPrompt || "(empty session)",
     slug,
     createdAt: createdAt || Date.now(),
