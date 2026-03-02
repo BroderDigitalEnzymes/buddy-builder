@@ -44,6 +44,7 @@ function createWindow(): void {
     frame: false,
     backgroundColor: BG_COLOR,
     title: "Buddy Builder",
+    icon: path.join(__dirname, "assets", "icon-256.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -90,7 +91,7 @@ function runTestMode(): void {
 function setupIpc(mgr: SessionManager): void {
   const handlers: Handlers = {
     createSession:     (opts) => mgr.create(opts),
-    sendMessage:       ({ sessionId, text }) => { mgr.send(sessionId, text); },
+    sendMessage:       ({ sessionId, text, images }) => { mgr.send(sessionId, text, images); },
     answerQuestion:    ({ sessionId, toolUseId, answer }) => { mgr.answerQuestion(sessionId, toolUseId, answer); },
     killSession:       ({ sessionId }) => { mgr.kill(sessionId); },
     listSessions:      () => mgr.list(),

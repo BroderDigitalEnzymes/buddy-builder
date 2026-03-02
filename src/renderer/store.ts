@@ -7,15 +7,17 @@ import {
   type PolicyPreset,
   type PermissionMode,
   type ChatEntry,
+  type ImageData,
 } from "../ipc.js";
+import { applyEvent } from "../entry-builder.js";
 
 export type { ChatEntry } from "../ipc.js";
 
 export type SessionData = {
   id: string;
   name: string;
+  projectName: string;
   state: string;
-  cost: number;
   claudeSessionId: string | null;
   permissionMode: PermissionMode;
   policyPreset: PolicyPreset;
@@ -72,8 +74,16 @@ export function getState(): StoreState {
 
 const api = (): ClientApi => (window as any).claude;
 
-export function switchSession(id: string): void {
+export async function switchSession(id: string): Promise<void> {
   state.activeId = id;
+  // Lazy-load entries if not yet loaded
+  const data = state.sessions.get(id);
+  if (data && data.entries.length === 0 && data.state === "dead") {
+    try {
+      const entries = await api().getSessionEntries({ sessionId: id });
+      data.entries = entries;
+    } catch { /* empty */ }
+  }
   emit();
 }
 
@@ -82,21 +92,17 @@ export async function loadPersistedSessions(): Promise<void> {
     const infos = await api().listSessions();
     for (const info of infos) {
       if (state.sessions.has(info.id)) continue;
-      // Fetch full entries from main
-      let entries: ChatEntry[] = [];
-      try {
-        entries = await api().getSessionEntries({ sessionId: info.id });
-      } catch { /* empty */ }
+      // Don't fetch entries upfront — lazy-load on switchSession
       state.counter++;
       state.sessions.set(info.id, {
         id: info.id,
         name: info.name,
+        projectName: info.projectName,
         state: info.state,
-        cost: info.cost,
         claudeSessionId: info.claudeSessionId,
         permissionMode: "default",
         policyPreset: "no-writes",
-        entries,
+        entries: [],
       });
     }
     emit();
@@ -112,8 +118,8 @@ export async function createSession(permissionMode: PermissionMode): Promise<voi
     state.sessions.set(id, {
       id,
       name: `Session ${state.counter}`,
+      projectName: "(new)",
       state: "idle",
-      cost: 0,
       claudeSessionId: null,
       permissionMode,
       policyPreset: PERMISSION_MODE_PRESETS[permissionMode],
@@ -126,16 +132,18 @@ export async function createSession(permissionMode: PermissionMode): Promise<voi
   }
 }
 
-export async function sendMessage(text: string): Promise<void> {
+export async function sendMessage(text: string, images?: ImageData[]): Promise<void> {
   if (!state.activeId) return;
   const data = state.sessions.get(state.activeId);
   if (!data || data.state !== "idle") return;
 
-  data.entries.push({ kind: "user", text, ts: Date.now() });
+  const entry: ChatEntry = { kind: "user", text, ts: Date.now() };
+  if (images?.length) entry.images = images;
+  data.entries.push(entry);
   emit();
 
   try {
-    await api().sendMessage({ sessionId: state.activeId, text });
+    await api().sendMessage({ sessionId: state.activeId, text, images });
   } catch (err) {
     data.entries.push({ kind: "system", text: `Send error: ${err}`, ts: Date.now() });
     emit();
@@ -213,100 +221,21 @@ export async function resumeSession(id: string): Promise<void> {
 
 // ─── Event handling ──────────────────────────────────────────────
 
-function summarizeInput(toolInput: Record<string, unknown>): string {
-  const parts: string[] = [];
-  for (const [k, v] of Object.entries(toolInput)) {
-    if (typeof v === "string") {
-      const short = v.replace(/\\/g, "/").split("/").slice(-2).join("/");
-      parts.push(`${k}=${short}`);
-    }
-  }
-  return parts.join(" ") || "";
-}
-
 function handleEvent(event: SessionEvent): void {
   const data = state.sessions.get(event.sessionId);
   if (!data) return;
 
+  // Unified entry building (text, tool lifecycle, result, error, exit)
+  applyEvent(data.entries, event);
+
+  // Store-specific side effects
   switch (event.kind) {
-    case "ready":
-      break;
-
-    case "text": {
-      const last = data.entries[data.entries.length - 1];
-      if (last?.kind === "text") {
-        last.text += event.text;
-      } else {
-        data.entries.push({ kind: "text", text: event.text, ts: Date.now() });
-      }
-      break;
-    }
-
-    case "toolStart":
-      data.entries.push({
-        kind: "tool",
-        toolName: event.toolName,
-        toolUseId: event.toolUseId,
-        status: "running",
-        detail: summarizeInput(event.toolInput),
-        toolInput: event.toolInput,
-        ts: Date.now(),
-      });
-      break;
-
-    case "toolEnd":
-      for (let i = data.entries.length - 1; i >= 0; i--) {
-        const e = data.entries[i];
-        if (e.kind === "tool" && e.toolUseId === event.toolUseId) {
-          e.status = "done";
-          if (event.response != null) {
-            const raw = typeof event.response === "string" ? event.response : JSON.stringify(event.response, null, 2);
-            e.toolResult = raw.length > 4000 ? raw.slice(0, 4000) + "\n…(truncated)" : raw;
-          }
-          break;
-        }
-      }
-      break;
-
-    case "toolBlocked":
-      data.entries.push({
-        kind: "tool",
-        toolName: event.toolName,
-        toolUseId: "",
-        status: "blocked",
-        detail: event.reason,
-        toolInput: {},
-        ts: Date.now(),
-      });
-      break;
-
-    case "result":
-      data.cost = event.cost;
-      data.entries.push({
-        kind: "result",
-        cost: event.cost,
-        turns: event.turns,
-        durationMs: event.durationMs,
-        ts: Date.now(),
-      });
-      break;
-
     case "stateChange":
       data.state = event.to;
       break;
-
-    case "warn":
-      break;
-
-    case "error":
-      data.entries.push({ kind: "system", text: `Error: ${event.message}`, ts: Date.now() });
-      break;
-
     case "exit":
       data.state = "dead";
-      data.entries.push({ kind: "system", text: "Session ended.", ts: Date.now() });
       break;
-
     case "nameChanged":
       data.name = event.name;
       break;

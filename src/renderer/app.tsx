@@ -18,10 +18,9 @@ import {
   Sidebar,
   Toolbar,
   MessageList,
-  StatusBar,
   InputBar,
 } from "./components.js";
-import type { PolicyPreset, PermissionMode } from "../ipc.js";
+import type { ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
 
 function App() {
   // Subscribe to all store changes via version counter
@@ -45,7 +44,7 @@ function App() {
   const handleRename = useCallback((id: string, name: string) => renameSession(id, name), []);
   const handleCreate = useCallback((perm: PermissionMode) => createSession(perm), []);
   const handlePreset = useCallback((p: PolicyPreset) => setPreset(p), []);
-  const handleSend = useCallback((text: string) => sendMessage(text), []);
+  const handleSend = useCallback((text: string, images?: ImageData[]) => sendMessage(text, images), []);
   const handleResume = useCallback(() => {
     if (activeId) resumeSession(activeId);
   }, [activeId]);
@@ -66,7 +65,6 @@ function App() {
         <div id="main-area">
           <Toolbar session={activeSession} onSetPreset={handlePreset} />
           <MessageList entries={entries} />
-          <StatusBar session={activeSession} />
           <InputBar
             disabled={!canSend}
             showResume={showResume}

@@ -1,7 +1,7 @@
 import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { marked } from "marked";
 import type { SessionData } from "./store.js";
-import type { ChatEntry, PolicyPreset, PermissionMode } from "../ipc.js";
+import type { ChatEntry, ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
 import { WindowControls } from "./window-controls.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views.js";
 
@@ -72,7 +72,7 @@ export function ToolEntry({ entry }: ToolEntryProps) {
   }
 
   // Standard: collapsible <details> with view tabs inside
-  const [open, setOpen] = useState(entry.status === "running");
+  const [open, setOpen] = useState(false);
 
   return (
     <details
@@ -108,7 +108,18 @@ type EntryContentProps = {
 function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
   switch (entry.kind) {
     case "user":
-      return <div className="msg-text">{entry.text}</div>;
+      return (
+        <>
+          {entry.images && entry.images.length > 0 && (
+            <div className="msg-images">
+              {entry.images.map((img, i) => (
+                <img key={i} className="msg-image" src={`data:${img.mediaType};base64,${img.base64}`} alt="" />
+              ))}
+            </div>
+          )}
+          <div className="msg-text">{entry.text}</div>
+        </>
+      );
 
     case "text":
       return <MarkdownText text={entry.text} />;
@@ -211,15 +222,15 @@ export function MessageList({ entries }: MessageListProps) {
 
   if (entries.length === 0) {
     return (
-      <div id="chat" className="chat-empty" ref={containerRef}>
+      <div id="chat" className="chat-area chat-empty" ref={containerRef}>
         <div className="empty-state">No session. Click <strong>+ New</strong> to start.</div>
       </div>
     );
   }
 
   return (
-    <div id="chat" ref={containerRef} onScroll={onScroll}>
-      <div id="messages">
+    <div id="chat" className="chat-area" ref={containerRef} onScroll={onScroll}>
+      <div className="messages">
         {entries.map((entry, i) => {
           const prevEntry = entries[i - 1];
           const sender = getSender(entry.kind);
@@ -313,7 +324,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 export const TitleBar = memo(function TitleBar() {
   return (
     <div id="title-bar">
-      <span id="title-bar-label">Buddy Builder</span>
+      <div id="title-bar-left">
+        <img id="title-bar-icon" src="../assets/icon-32.png" alt="" />
+        <span id="title-bar-label">Buddy Builder</span>
+      </div>
       <WindowControls />
     </div>
   );
@@ -391,37 +405,234 @@ type SidebarProps = {
   onCreate: (perm: PermissionMode) => void;
 };
 
+/**
+ * Simple fuzzy match: every character in the query must appear
+ * in order somewhere in the target (case-insensitive).
+ */
+function fuzzyMatch(query: string, target: string): boolean {
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
+
+type ProjectGroup = { project: string; items: SessionData[] };
+
+function groupByProject(sessions: SessionData[], query: string): ProjectGroup[] {
+  const q = query.trim();
+  const groups: ProjectGroup[] = [];
+  const map = new Map<string, SessionData[]>();
+  const order: string[] = [];
+  for (const s of sessions) {
+    if (q && !fuzzyMatch(q, s.projectName) && !fuzzyMatch(q, s.name)) continue;
+    const p = s.projectName;
+    if (!map.has(p)) { map.set(p, []); order.push(p); }
+    map.get(p)!.push(s);
+  }
+  for (const p of order) groups.push({ project: p, items: map.get(p)! });
+  return groups;
+}
+
+// ─── Reusable session group list ─────────────────────────────────
+
+type SessionGroupListProps = {
+  groups: ProjectGroup[];
+  activeId: string | null;
+  expanded: Set<string>;
+  defaultOpen: boolean;
+  isSearching: boolean;
+  onToggle: (project: string) => void;
+  onSwitch: (id: string) => void;
+  onKill: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
+  live: boolean;
+};
+
+function SessionGroupList({
+  groups, activeId, expanded, defaultOpen, isSearching,
+  onToggle, onSwitch, onKill, onDelete, onRename, live,
+}: SessionGroupListProps) {
+  if (groups.length === 0) {
+    return (
+      <div className="panel-empty">
+        {live ? "No active sessions" : "No sessions found"}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {groups.map(({ project, items }) => {
+        const isOpen = isSearching || (defaultOpen ? !expanded.has(project) : expanded.has(project));
+        return (
+          <div key={project} className="project-group">
+            <button className="project-header" onClick={() => onToggle(project)}>
+              <span className={`project-chevron ${isOpen ? "" : "collapsed"}`} />
+              <span className="project-name">{project}</span>
+              <span className="project-count">{items.length}</span>
+            </button>
+            {isOpen && items.map((s) => {
+              const isDead = s.state === "dead";
+              return (
+                <button
+                  key={s.id}
+                  className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""}`}
+                  onClick={() => onSwitch(s.id)}
+                >
+                  <span className={`session-dot state-${s.state}`} />
+                  <EditableSessionLabel
+                    name={s.name}
+                    onRename={(name) => onRename(s.id, name)}
+                  />
+                  {live ? (
+                    <span
+                      className="session-kill"
+                      title="Terminate session"
+                      onClick={(e) => { e.stopPropagation(); onKill(s.id); }}
+                    >
+                      &#9632;
+                    </span>
+                  ) : (
+                    <span
+                      className="session-close"
+                      title="Remove from list"
+                      onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
+                    >
+                      &times;
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── Drag bar hook ───────────────────────────────────────────────
+
+function useDragBar(containerRef: React.RefObject<HTMLDivElement | null>, initial: number) {
+  const [topRatio, setTopRatio] = useState(initial);
+  const dragging = useRef(false);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const y = ev.clientY - rect.top;
+      const ratio = Math.max(0.08, Math.min(0.92, y / rect.height));
+      setTopRatio(ratio);
+    };
+
+    const onUp = () => {
+      dragging.current = false;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [containerRef]);
+
+  return { topRatio, onMouseDown };
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────────
+
 export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onKill, onDelete, onRename, onCreate }: SidebarProps) {
   const [perm, setPerm] = useState<PermissionMode>("default");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [liveExpanded, setLiveExpanded] = useState<Set<string>>(new Set());
+  const [histExpanded, setHistExpanded] = useState<Set<string>>(new Set());
+  const panelsRef = useRef<HTMLDivElement>(null);
+  const { topRatio, onMouseDown } = useDragBar(panelsRef, 0.3);
+
+  const isSearching = search.trim().length > 0;
+
+  // Split into live vs history
+  const liveSessions = useMemo(() => sessions.filter((s) => s.state !== "dead"), [sessions]);
+  const deadSessions = useMemo(() => sessions.filter((s) => s.state === "dead"), [sessions]);
+
+  const liveGroups = useMemo(() => groupByProject(liveSessions, search), [liveSessions, search]);
+  const histGroups = useMemo(() => groupByProject(deadSessions, search), [deadSessions, search]);
+
+  const toggleLive = useCallback((p: string) => {
+    setLiveExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
+  }, []);
+  const toggleHist = useCallback((p: string) => {
+    setHistExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
+  }, []);
 
   return (
     <>
       <div id="sidebar">
-        <div id="session-list">
-          {sessions.map((s) => {
-            const isDead = s.state === "dead";
-            return (
-              <button
-                key={s.id}
-                className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""}`}
-                onClick={() => onSwitch(s.id)}
-              >
-                <span className={`session-dot state-${s.state}`} />
-                <EditableSessionLabel
-                  name={s.name}
-                  onRename={(name) => onRename(s.id, name)}
-                />
-                <span
-                  className="session-close"
-                  title={isDead ? "Delete session" : "Close session"}
-                  onClick={(e) => { e.stopPropagation(); isDead ? onDelete(s.id) : onKill(s.id); }}
-                >
-                  &times;
-                </span>
-              </button>
-            );
-          })}
+        <div id="sidebar-search">
+          <input
+            className="sidebar-search-input"
+            type="text"
+            placeholder="Search sessions..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            spellCheck={false}
+          />
+          {search && (
+            <button className="sidebar-search-clear" onClick={() => setSearch("")}>
+              &times;
+            </button>
+          )}
+        </div>
+        <div id="sidebar-panels" ref={panelsRef}>
+          <div className="sidebar-panel" style={{ flex: `0 0 ${topRatio * 100}%` }}>
+            <div className="panel-label">Live</div>
+            <div className="panel-scroll">
+              <SessionGroupList
+                groups={liveGroups}
+                activeId={activeId}
+                expanded={liveExpanded}
+                defaultOpen={true}
+                isSearching={isSearching}
+                onToggle={toggleLive}
+                onSwitch={onSwitch}
+                onKill={onKill}
+                onDelete={onDelete}
+                onRename={onRename}
+                live={true}
+              />
+            </div>
+          </div>
+          <div className="sidebar-drag" onMouseDown={onMouseDown} />
+          <div className="sidebar-panel" style={{ flex: 1 }}>
+            <div className="panel-label">History</div>
+            <div className="panel-scroll">
+              <SessionGroupList
+                groups={histGroups}
+                activeId={activeId}
+                expanded={histExpanded}
+                defaultOpen={false}
+                isSearching={isSearching}
+                onToggle={toggleHist}
+                onSwitch={onSwitch}
+                onKill={onKill}
+                onDelete={onDelete}
+                onRename={onRename}
+                live={false}
+              />
+            </div>
+          </div>
         </div>
         <div id="sidebar-actions">
           <select
@@ -483,51 +694,51 @@ export const Toolbar = memo(function Toolbar({ session, onSetPreset }: ToolbarPr
 
 // ─── Status bar ──────────────────────────────────────────────────
 
-type StatusBarProps = {
-  session: SessionData | null;
-};
+// ─── Input bar ───────────────────────────────────────────────────
 
-export const StatusBar = memo(function StatusBar({ session }: StatusBarProps) {
-  if (!session) {
-    return <div id="status-bar" />;
-  }
+// ─── Helpers: read clipboard images ──────────────────────────────
 
-  return (
-    <div id="status-bar">
-      <span className="status-state">
-        <span className={`status-dot state-${session.state}`} />
-        {session.state}
-      </span>
-      <span className="status-sep" />
-      <span className="status-cost">${session.cost.toFixed(4)}</span>
-    </div>
-  );
-});
+function fileToImageData(file: File): Promise<ImageData | null> {
+  const mediaType = file.type as ImageData["mediaType"];
+  if (!["image/jpeg", "image/png", "image/gif", "image/webp"].includes(mediaType)) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1];
+      if (base64) resolve({ base64, mediaType });
+      else resolve(null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
 
 // ─── Input bar ───────────────────────────────────────────────────
 
 type InputBarProps = {
   disabled: boolean;
   showResume: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: ImageData[]) => void;
   onResume: () => void;
 };
 
 export const InputBar = memo(function InputBar({ disabled, showResume, onSend, onResume }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const prevDisabled = useRef(disabled);
+  const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
 
   const handleSend = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const text = el.value.trim();
-    if (!text) return;
+    if (!text && pendingImages.length === 0) return;
     el.value = "";
     el.style.height = "auto";
-    onSend(text);
-    // Re-focus after send
+    onSend(text || "(image)", pendingImages.length > 0 ? pendingImages : undefined);
+    setPendingImages([]);
     requestAnimationFrame(() => el.focus());
-  }, [onSend]);
+  }, [onSend, pendingImages]);
 
   // Re-focus when session goes from busy → idle
   useEffect(() => {
@@ -551,6 +762,29 @@ export const InputBar = memo(function InputBar({ disabled, showResume, onSend, o
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   }, []);
 
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length === 0) return;
+    e.preventDefault();
+    const results = await Promise.all(imageFiles.map(fileToImageData));
+    const valid = results.filter((r): r is ImageData => r !== null);
+    if (valid.length > 0) {
+      setPendingImages((prev) => [...prev, ...valid]);
+    }
+  }, []);
+
+  const removeImage = useCallback((index: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   if (showResume) {
     return (
       <div id="input-bar">
@@ -563,18 +797,31 @@ export const InputBar = memo(function InputBar({ disabled, showResume, onSend, o
 
   return (
     <div id="input-bar">
-      <textarea
-        ref={ref}
-        id="input"
-        placeholder="Message Claude..."
-        rows={1}
-        disabled={disabled}
-        onKeyDown={handleKeyDown}
-        onInput={handleInput}
-      />
-      <button id="send" disabled={disabled} onClick={handleSend}>
-        Send
-      </button>
+      {pendingImages.length > 0 && (
+        <div className="image-preview-bar">
+          {pendingImages.map((img, i) => (
+            <div key={i} className="image-preview-thumb">
+              <img src={`data:${img.mediaType};base64,${img.base64}`} alt="" />
+              <button className="image-preview-remove" onClick={() => removeImage(i)}>&times;</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="input-row">
+        <textarea
+          ref={ref}
+          id="input"
+          placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : "Message Claude..."}
+          rows={1}
+          disabled={disabled}
+          onKeyDown={handleKeyDown}
+          onInput={handleInput}
+          onPaste={handlePaste}
+        />
+        <button id="send" disabled={disabled} onClick={handleSend}>
+          Send
+        </button>
+      </div>
     </div>
   );
 });

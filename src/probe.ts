@@ -57,9 +57,9 @@ async function main(): Promise<void> {
     log("STATE", `${ev.from} → ${ev.to}`);
   });
 
-  session.on("text", (text) => {
+  session.on("text", (ev) => {
     // Print text inline, no tag (for readability)
-    process.stdout.write(text);
+    process.stdout.write(ev.text);
   });
 
   session.on("toolStart", (ev) => {

@@ -19,6 +19,7 @@ import {
   type PostToolUsePayload,
   type StopPayload,
 } from "./schema.js";
+import type { ImageData } from "./ipc.js";
 
 // ─── Event Map ──────────────────────────────────────────────────
 
@@ -30,14 +31,14 @@ export type SessionEventMap = {
 
   // Response stream
   message: AssistantMessage;
-  text: string;
+  text: { text: string; parentToolUseId?: string };
   result: ResultMessage;
   rateLimit: RateLimitEvent;
 
   // Tool lifecycle (from hooks)
-  toolStart: { toolName: string; toolInput: Record<string, unknown>; toolUseId: string };
+  toolStart: { toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string };
   toolEnd: { toolName: string; toolInput: Record<string, unknown>; response: unknown; toolUseId: string };
-  toolBlocked: { toolName: string; toolInput: Record<string, unknown>; reason: string };
+  toolBlocked: { toolName: string; toolInput: Record<string, unknown>; reason: string; parentToolUseId?: string };
 
   // Claude stopped generating
   stop: { stopHookActive: boolean; lastMessage: string };
@@ -50,7 +51,7 @@ export type SessionEventMap = {
 // ─── Session interface ──────────────────────────────────────────
 
 export type Session = {
-  send(text: string): void;
+  send(text: string, images?: ImageData[]): void;
   prompt(text: string): Promise<ResultMessage>;
 
   on: Emitter<SessionEventMap>["on"];
@@ -69,13 +70,20 @@ export type Session = {
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-function writeUserMessage(proc: ChildProcess, text: string): void {
+function writeUserMessage(proc: ChildProcess, text: string, images?: ImageData[]): void {
+  const content: unknown[] = [];
+  if (images) {
+    for (const img of images) {
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: img.mediaType, data: img.base64 },
+      });
+    }
+  }
+  content.push({ type: "text", text });
   const msg = JSON.stringify({
     type: "user",
-    message: {
-      role: "user",
-      content: [{ type: "text", text }],
-    },
+    message: { role: "user", content },
   });
   proc.stdin!.write(msg + "\n");
 }
@@ -129,6 +137,7 @@ export async function createSession(
           toolName: payload.tool_name,
           toolInput: payload.tool_input,
           reason: decision.reason,
+          parentToolUseId: payload.parent_tool_use_id ?? undefined,
         });
         return `block:${decision.reason}`;
       }
@@ -148,6 +157,7 @@ export async function createSession(
         toolName: payload.tool_name,
         toolInput: payload.tool_input,
         toolUseId: payload.tool_use_id,
+        parentToolUseId: payload.parent_tool_use_id ?? undefined,
       });
 
       // Intercept AskUserQuestion: hold the hook response until the UI answers
@@ -194,14 +204,15 @@ export async function createSession(
     (msg) => {
       switch (msg.type) {
         case "system":
+          if (!("model" in msg)) break; // skip non-init system messages
           sessionId = msg.session_id;
-          emitter.emit("ready", msg);
+          emitter.emit("ready", msg as InitMessage);
           break;
 
         case "assistant": {
           emitter.emit("message", msg);
           const text = extractText(msg);
-          if (text) emitter.emit("text", text);
+          if (text) emitter.emit("text", { text, parentToolUseId: msg.parent_tool_use_id ?? undefined });
           break;
         }
 
@@ -251,11 +262,11 @@ export async function createSession(
 
   // ── Public API ──
   const session: Session = {
-    send(text: string): void {
+    send(text: string, images?: ImageData[]): void {
       if (state === "dead") throw new Error("Session is dead");
       if (state === "busy") throw new Error("Session is busy — await the current result first");
       transition("busy");
-      writeUserMessage(proc, text);
+      writeUserMessage(proc, text, images);
     },
 
     prompt(text: string): Promise<ResultMessage> {

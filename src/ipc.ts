@@ -3,37 +3,30 @@ import type {
   SessionState,
 } from "./schema.js";
 
+// ─── Image data (shared between main + renderer) ─────────────────
+
+export type ImageData = {
+  base64: string;
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+};
+
 // ─── Chat entry types (shared between main + renderer) ────────────
 
 export type ChatEntry =
-  | { kind: "user"; text: string; ts: number }
+  | { kind: "user"; text: string; images?: ImageData[]; ts: number }
   | { kind: "text"; text: string; ts: number }
-  | { kind: "tool"; toolName: string; toolUseId: string; status: "running" | "done" | "blocked"; detail: string; toolInput: Record<string, unknown>; toolResult?: string; ts: number }
+  | { kind: "tool"; toolName: string; toolUseId: string; status: "running" | "done" | "blocked"; detail: string; toolInput: Record<string, unknown>; toolResult?: string; children?: ChatEntry[]; ts: number }
   | { kind: "result"; cost: number; turns: number; durationMs: number; ts: number }
   | { kind: "system"; text: string; ts: number };
-
-// ─── Persisted session (disk format) ──────────────────────────────
-
-export type PersistedSession = {
-  id: string;
-  claudeSessionId: string | null;
-  name: string;
-  permissionMode: PermissionMode;
-  policyPreset: PolicyPreset;
-  cost: number;
-  entries: ChatEntry[];
-  createdAt: number;
-  lastActiveAt: number;
-};
 
 // ─── Session Event (main → renderer, validated by zod in schema.ts) ─
 
 export type SessionEvent =
   | { kind: "ready"; sessionId: string; model: string; tools: string[] }
-  | { kind: "text"; sessionId: string; text: string }
-  | { kind: "toolStart"; sessionId: string; toolName: string; toolInput: Record<string, unknown>; toolUseId: string }
+  | { kind: "text"; sessionId: string; text: string; parentToolUseId?: string }
+  | { kind: "toolStart"; sessionId: string; toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string }
   | { kind: "toolEnd"; sessionId: string; toolName: string; toolUseId: string; response: unknown }
-  | { kind: "toolBlocked"; sessionId: string; toolName: string; reason: string }
+  | { kind: "toolBlocked"; sessionId: string; toolName: string; reason: string; parentToolUseId?: string }
   | { kind: "result"; sessionId: string; text: string; cost: number; turns: number; durationMs: number }
   | { kind: "stateChange"; sessionId: string; from: string; to: string }
   | { kind: "warn"; sessionId: string; message: string }
@@ -44,8 +37,8 @@ export type SessionEvent =
 export type SessionInfo = {
   readonly id: string;
   readonly name: string;
+  readonly projectName: string;
   readonly state: SessionState;
-  readonly cost: number;
   readonly claudeSessionId: string | null;
 };
 
@@ -112,7 +105,7 @@ export type AppConfig = {
 /** Invoke channels: renderer calls, main handles. */
 export type InvokeContract = {
   createSession:     { in: CreateSessionOptions | undefined; out: string };
-  sendMessage:       { in: { sessionId: string; text: string }; out: void };
+  sendMessage:       { in: { sessionId: string; text: string; images?: ImageData[] }; out: void };
   answerQuestion:    { in: { sessionId: string; toolUseId: string; answer: string }; out: void };
   killSession:       { in: { sessionId: string }; out: void };
   listSessions:      { in: undefined; out: SessionInfo[] };

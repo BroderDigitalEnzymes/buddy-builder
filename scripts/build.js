@@ -47,6 +47,10 @@ async function main() {
   cpSync("src/renderer/index.html", "dist/renderer/index.html");
   cpSync("src/renderer/styles.css", "dist/renderer/styles.css");
 
+  // Copy assets
+  mkdirSync("dist/assets", { recursive: true });
+  cpSync("assets", "dist/assets", { recursive: true });
+
   console.log("Build complete.");
 }
 

@@ -68,6 +68,7 @@ export const AssistantMessageSchema = z
       })
       .catchall(z.unknown()),
     session_id: z.string(),
+    parent_tool_use_id: z.string().nullable().optional(),
   })
   .catchall(z.unknown());
 
@@ -109,18 +110,28 @@ export const UserEchoSchema = z
   })
   .catchall(z.unknown());
 
+export const SystemEventSchema = z
+  .object({
+    type: z.literal("system"),
+    subtype: z.string(),
+    session_id: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
 export type InitMessage = z.infer<typeof InitMessageSchema>;
 export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
 export type ResultMessage = z.infer<typeof ResultMessageSchema>;
 export type RateLimitEvent = z.infer<typeof RateLimitEventSchema>;
 export type UserEcho = z.infer<typeof UserEchoSchema>;
+export type SystemEvent = z.infer<typeof SystemEventSchema>;
 
 export type OutputMessage =
   | InitMessage
   | AssistantMessage
   | ResultMessage
   | RateLimitEvent
-  | UserEcho;
+  | UserEcho
+  | SystemEvent;
 
 // ─── Hook Payloads ──────────────────────────────────────────────
 
@@ -131,6 +142,7 @@ const HookBaseSchema = z
     hook_event_name: z.string(),
     permission_mode: z.string(),
     transcript_path: z.string(),
+    parent_tool_use_id: z.string().optional(),
   })
   .catchall(z.unknown());
 

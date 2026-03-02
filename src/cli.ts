@@ -52,8 +52,8 @@ async function main(): Promise<void> {
     console.log(green(`Ready`) + dim(` session=${init.session_id.slice(0, 8)} model=${init.model}`));
   });
 
-  session.on("text", (text) => {
-    process.stdout.write(text);
+  session.on("text", (ev) => {
+    process.stdout.write(ev.text);
   });
 
   session.on("toolStart", (ev) => {

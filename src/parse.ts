@@ -5,6 +5,7 @@ import {
   ResultMessageSchema,
   RateLimitEventSchema,
   UserEchoSchema,
+  SystemEventSchema,
   type OutputMessage,
 } from "./schema.js";
 
@@ -27,7 +28,7 @@ export function parseLine(line: string): OutputMessage | null {
 function parseJsonMessage(json: any): OutputMessage | null {
   switch (json.type) {
     case "system":
-      return safeParse(InitMessageSchema, json);
+      return safeParse(InitMessageSchema, json) ?? safeParse(SystemEventSchema, json);
     case "assistant":
       return safeParse(AssistantMessageSchema, json);
     case "result":

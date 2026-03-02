@@ -9,22 +9,26 @@ import {
   type ToolPolicyConfig,
   type CreateSessionOptions,
   type ChatEntry,
+  type ImageData,
   type PermissionMode,
   type PolicyPreset,
 } from "../ipc.js";
-import { saveSession, loadAllSessions, deleteSessionFile } from "./persistence.js";
+import { applyEvent } from "../entry-builder.js";
+import { discoverAllSessions, parseTranscript } from "./transcript.js";
+import { loadMeta, updateSessionMeta, deleteSessionMeta, type SessionMeta } from "./session-meta.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
 type ManagedSession = {
-  readonly id: string;
+  readonly id: string;           // internal UUID (or claudeSessionId for discovered sessions)
   name: string;
-  session: Session | null;           // null when dead
-  claudeSessionId: string | null;    // from init message
+  projectName: string;
+  session: Session | null;       // null when dead
+  claudeSessionId: string | null;
+  transcriptPath: string | null; // path to JSONL transcript
   policy: ToolPolicyConfig;
   permissionMode: PermissionMode;
-  cost: number;
-  entries: ChatEntry[];
+  entries: ChatEntry[] | null;   // null = not yet loaded (lazy)
   createdAt: number;
   lastActiveAt: number;
 };
@@ -48,124 +52,44 @@ function buildToolPolicy(config: ToolPolicyConfig) {
   };
 }
 
-// ─── Summarize tool input for entries ────────────────────────────
-
-function summarizeInput(toolInput: Record<string, unknown>): string {
-  const parts: string[] = [];
-  for (const [k, v] of Object.entries(toolInput)) {
-    if (typeof v === "string") {
-      const short = v.replace(/\\/g, "/").split("/").slice(-2).join("/");
-      parts.push(`${k}=${short}`);
-    }
-  }
-  return parts.join(" ") || "";
-}
-
-// ─── Persist helper (debounced for text events) ──────────────────
-
-function persistManaged(managed: ManagedSession): void {
-  saveSession({
-    id: managed.id,
-    claudeSessionId: managed.claudeSessionId,
-    name: managed.name,
-    permissionMode: managed.permissionMode,
-    policyPreset: managed.policy.preset,
-    cost: managed.cost,
-    entries: managed.entries,
-    createdAt: managed.createdAt,
-    lastActiveAt: managed.lastActiveAt,
-  });
-}
-
 // ─── Wire a session's events and build entries ───────────────────
 
 function wireSession(managed: ManagedSession, session: Session, sink: EventSink): void {
   const id = managed.id;
 
+  // Ensure entries array exists for live sessions
+  if (!managed.entries) managed.entries = [];
+
+  // Helper: build a SessionEvent from a session-layer event, apply to entries, and forward to renderer.
+  function forward(event: SessionEvent): void {
+    applyEvent(managed.entries!, event);
+    managed.lastActiveAt = Date.now();
+    sink(event);
+  }
+
   session.on("ready", (init) => {
     managed.claudeSessionId = init.session_id;
-    managed.lastActiveAt = Date.now();
-    persistManaged(managed);
-    sink({ kind: "ready", sessionId: id, model: init.model, tools: init.tools });
+    forward({ kind: "ready", sessionId: id, model: init.model, tools: init.tools });
   });
 
-  let textDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-  session.on("text", (text) => {
-    // Build entry in manager
-    const last = managed.entries[managed.entries.length - 1];
-    if (last?.kind === "text") {
-      last.text += text;
-    } else {
-      managed.entries.push({ kind: "text", text, ts: Date.now() });
-    }
-    managed.lastActiveAt = Date.now();
-
-    // Debounce persistence for text (every 2s)
-    if (textDebounceTimer) clearTimeout(textDebounceTimer);
-    textDebounceTimer = setTimeout(() => persistManaged(managed), 2000);
-
-    sink({ kind: "text", sessionId: id, text });
+  session.on("text", (ev) => {
+    forward({ kind: "text", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
   });
 
   session.on("toolStart", (ev) => {
-    managed.entries.push({
-      kind: "tool",
-      toolName: ev.toolName,
-      toolUseId: ev.toolUseId,
-      status: "running",
-      detail: summarizeInput(ev.toolInput),
-      toolInput: ev.toolInput,
-      ts: Date.now(),
-    });
-    managed.lastActiveAt = Date.now();
-    sink({ kind: "toolStart", sessionId: id, toolName: ev.toolName, toolInput: ev.toolInput, toolUseId: ev.toolUseId });
+    forward({ kind: "toolStart", sessionId: id, toolName: ev.toolName, toolInput: ev.toolInput, toolUseId: ev.toolUseId, parentToolUseId: ev.parentToolUseId });
   });
 
   session.on("toolEnd", (ev) => {
-    for (let i = managed.entries.length - 1; i >= 0; i--) {
-      const e = managed.entries[i];
-      if (e.kind === "tool" && e.toolUseId === ev.toolUseId) {
-        e.status = "done";
-        if (ev.response != null) {
-          const raw = typeof ev.response === "string" ? ev.response : JSON.stringify(ev.response, null, 2);
-          e.toolResult = raw.length > 4000 ? raw.slice(0, 4000) + "\n…(truncated)" : raw;
-        }
-        break;
-      }
-    }
-    managed.lastActiveAt = Date.now();
-    sink({ kind: "toolEnd", sessionId: id, toolName: ev.toolName, toolUseId: ev.toolUseId, response: ev.response });
+    forward({ kind: "toolEnd", sessionId: id, toolName: ev.toolName, toolUseId: ev.toolUseId, response: ev.response });
   });
 
   session.on("toolBlocked", (ev) => {
-    managed.entries.push({
-      kind: "tool",
-      toolName: ev.toolName,
-      toolUseId: "",
-      status: "blocked",
-      detail: ev.reason,
-      toolInput: {},
-      ts: Date.now(),
-    });
-    managed.lastActiveAt = Date.now();
-    sink({ kind: "toolBlocked", sessionId: id, toolName: ev.toolName, reason: ev.reason });
+    forward({ kind: "toolBlocked", sessionId: id, toolName: ev.toolName, reason: ev.reason, parentToolUseId: ev.parentToolUseId });
   });
 
   session.on("result", (r) => {
-    managed.cost = r.total_cost_usd;
-    managed.entries.push({
-      kind: "result",
-      cost: r.total_cost_usd,
-      turns: r.num_turns,
-      durationMs: r.duration_ms,
-      ts: Date.now(),
-    });
-    managed.lastActiveAt = Date.now();
-    // Flush any pending text debounce
-    if (textDebounceTimer) { clearTimeout(textDebounceTimer); textDebounceTimer = null; }
-    persistManaged(managed);
-    sink({ kind: "result", sessionId: id, text: r.result, cost: r.total_cost_usd, turns: r.num_turns, durationMs: r.duration_ms });
+    forward({ kind: "result", sessionId: id, text: r.result, cost: r.total_cost_usd, turns: r.num_turns, durationMs: r.duration_ms });
   });
 
   session.on("stateChange", (ev) => {
@@ -177,19 +101,12 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("error", (err) => {
-    managed.entries.push({ kind: "system", text: `Error: ${err.message}`, ts: Date.now() });
-    managed.lastActiveAt = Date.now();
-    sink({ kind: "error", sessionId: id, message: err.message });
+    forward({ kind: "error", sessionId: id, message: err.message });
   });
 
   session.on("exit", (ev) => {
     managed.session = null;
-    managed.entries.push({ kind: "system", text: "Session ended.", ts: Date.now() });
-    managed.lastActiveAt = Date.now();
-    // Flush any pending text debounce
-    if (textDebounceTimer) { clearTimeout(textDebounceTimer); textDebounceTimer = null; }
-    persistManaged(managed);
-    sink({ kind: "exit", sessionId: id, code: ev.code });
+    forward({ kind: "exit", sessionId: id, code: ev.code });
   });
 }
 
@@ -197,7 +114,7 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
 
 export type SessionManager = {
   create(options?: CreateSessionOptions): Promise<string>;
-  send(id: string, text: string): void;
+  send(id: string, text: string, images?: ImageData[]): void;
   answerQuestion(id: string, toolUseId: string, answer: string): void;
   kill(id: string): void;
   remove(id: string): void;
@@ -214,28 +131,45 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
   const sessions = new Map<string, ManagedSession>();
   let counter = 0;
 
-  // Load persisted sessions from disk (as dead sessions)
-  for (const persisted of loadAllSessions()) {
+  // ── Discover sessions from ALL Claude JSONL transcripts ──
+  const meta = loadMeta();
+
+  for (const stub of discoverAllSessions()) {
     counter++;
+    const m: SessionMeta = meta[stub.claudeSessionId] ?? {};
+
+    // Use claudeSessionId as our internal ID for discovered sessions
+    const id = stub.claudeSessionId;
     const managed: ManagedSession = {
-      id: persisted.id,
-      name: persisted.name,
+      id,
+      name: m.name ?? stub.slug ?? (stub.firstPrompt.slice(0, 50) || `Session ${counter}`),
+      projectName: stub.projectName,
       session: null,
-      claudeSessionId: persisted.claudeSessionId,
-      policy: { preset: persisted.policyPreset, blockedTools: [] },
-      permissionMode: persisted.permissionMode,
-      cost: persisted.cost,
-      entries: persisted.entries,
-      createdAt: persisted.createdAt,
-      lastActiveAt: persisted.lastActiveAt,
+      claudeSessionId: stub.claudeSessionId,
+      transcriptPath: stub.transcriptPath,
+      policy: { preset: (m.policyPreset as PolicyPreset) ?? "unrestricted", blockedTools: [] },
+      permissionMode: (m.permissionMode as PermissionMode) ?? "default",
+      entries: null, // lazy — loaded on demand
+      createdAt: stub.createdAt,
+      lastActiveAt: stub.lastActiveAt,
     };
-    sessions.set(persisted.id, managed);
+    sessions.set(id, managed);
   }
 
   function getManaged(id: string): ManagedSession {
     const s = sessions.get(id);
     if (!s) throw new Error(`No session: ${id}`);
     return s;
+  }
+
+  /** Lazily load entries from JSONL transcript. */
+  function ensureEntries(managed: ManagedSession): ChatEntry[] {
+    if (managed.entries === null) {
+      managed.entries = managed.transcriptPath
+        ? parseTranscript(managed.transcriptPath)
+        : [];
+    }
+    return managed.entries;
   }
 
   return {
@@ -256,11 +190,12 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const managed: ManagedSession = {
         id,
         name: `Session ${counter}`,
+        projectName: "(new)",
         session,
         claudeSessionId: null,
+        transcriptPath: null,
         policy,
         permissionMode: permMode,
-        cost: 0,
         entries: [{ kind: "system", text: `Session created · ${permMode}`, ts: now }],
         createdAt: now,
         lastActiveAt: now,
@@ -269,17 +204,17 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
       session.setToolPolicy(buildToolPolicy(policy));
       wireSession(managed, session, sink);
-      persistManaged(managed);
       return id;
     },
 
-    send(id: string, text: string): void {
+    send(id: string, text: string, images?: ImageData[]): void {
       const managed = getManaged(id);
       if (!managed.session) throw new Error("Session is dead");
-      // Add user entry in manager
-      managed.entries.push({ kind: "user", text, ts: Date.now() });
+      const entry: ChatEntry = { kind: "user", text, ts: Date.now() };
+      if (images?.length) entry.images = images;
+      ensureEntries(managed).push(entry);
       managed.lastActiveAt = Date.now();
-      managed.session.send(text);
+      managed.session.send(text, images);
     },
 
     answerQuestion(id: string, toolUseId: string, answer: string): void {
@@ -293,9 +228,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       if (!managed) return;
       if (managed.session) {
         managed.session.kill();
-        // session will be set to null via exit event handler
       }
-      // Session stays in map as dead + resumable
     },
 
     remove(id: string): void {
@@ -305,14 +238,19 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         managed.session.kill();
       }
       sessions.delete(id);
-      deleteSessionFile(id);
+      // Remove metadata sidecar only — leave Claude's JSONL intact
+      if (managed.claudeSessionId) {
+        deleteSessionMeta(managed.claudeSessionId);
+      }
     },
 
     rename(id: string, name: string): void {
       const managed = getManaged(id);
       managed.name = name;
       managed.lastActiveAt = Date.now();
-      persistManaged(managed);
+      if (managed.claudeSessionId) {
+        updateSessionMeta(managed.claudeSessionId, { name });
+      }
       sink({ kind: "nameChanged", sessionId: id, name });
     },
 
@@ -330,11 +268,12 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const session = await createSession(config);
       managed.session = session;
       session.setToolPolicy(buildToolPolicy(managed.policy));
-      wireSession(managed, session, sink);
 
-      managed.entries.push({ kind: "system", text: "Session resumed.", ts: Date.now() });
+      // Ensure entries are loaded before appending
+      ensureEntries(managed).push({ kind: "system", text: "Session resumed.", ts: Date.now() });
       managed.lastActiveAt = Date.now();
-      persistManaged(managed);
+
+      wireSession(managed, session, sink);
 
       // Emit stateChange so renderer picks up the alive state
       sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });
@@ -344,14 +283,14 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       return [...sessions.values()].map((s) => ({
         id: s.id,
         name: s.name,
+        projectName: s.projectName,
         state: s.session ? s.session.state : "dead" as const,
-        cost: s.cost,
         claudeSessionId: s.claudeSessionId,
       }));
     },
 
     getEntries(id: string): ChatEntry[] {
-      return getManaged(id).entries;
+      return ensureEntries(getManaged(id));
     },
 
     updatePolicy(id: string, policy: ToolPolicyConfig): void {
@@ -360,7 +299,9 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       if (managed.session) {
         managed.session.setToolPolicy(buildToolPolicy(policy));
       }
-      persistManaged(managed);
+      if (managed.claudeSessionId) {
+        updateSessionMeta(managed.claudeSessionId, { policyPreset: policy.preset });
+      }
     },
 
     getPolicy(id: string): ToolPolicyConfig {
