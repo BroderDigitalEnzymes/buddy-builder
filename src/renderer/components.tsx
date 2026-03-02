@@ -662,7 +662,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
   );
 });
 
-// ─── Toolbar ─────────────────────────────────────────────────────
+// ─── Chat header (Slack-style) ───────────────────────────────────
 
 const PRESETS: PolicyPreset[] = ["unrestricted", "allow-edits", "no-writes", "read-only"];
 const PRESET_LABELS: Record<PolicyPreset, string> = {
@@ -672,28 +672,82 @@ const PRESET_LABELS: Record<PolicyPreset, string> = {
   "read-only": "Read Only",
 };
 
-type ToolbarProps = {
-  session: SessionData | null;
-  onSetPreset: (p: PolicyPreset) => void;
+const PRESET_ICONS: Record<PolicyPreset, string> = {
+  "unrestricted": "\u26A0",   // warning sign
+  "allow-edits": "\u270E",    // pencil
+  "no-writes": "\u{1F6E1}",   // shield
+  "read-only": "\u{1F512}",   // lock
 };
 
-export const Toolbar = memo(function Toolbar({ session, onSetPreset }: ToolbarProps) {
-  if (!session) return null;
+type ChatHeaderProps = {
+  session: SessionData | null;
+  onSetPreset: (p: PolicyPreset) => void;
+  onToggleFavorite: () => void;
+};
+
+export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite }: ChatHeaderProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dropdownOpen]);
+
+  if (!session) {
+    return <div id="chat-header" />;
+  }
 
   return (
-    <div id="toolbar">
-      <span id="toolbar-label">Tool Policy</span>
-      {PRESETS.map((p) => (
+    <div id="chat-header">
+      <div className="chat-header-left">
         <button
-          key={p}
-          className={`policy-btn ${p === session.policyPreset ? "active" : ""}`}
-          data-preset={p}
-          onClick={() => onSetPreset(p)}
+          className={`chat-header-star ${session.favorite ? "starred" : ""}`}
+          title={session.favorite ? "Remove from favorites" : "Add to favorites"}
+          onClick={onToggleFavorite}
         >
-          {PRESET_LABELS[p]}
+          {session.favorite ? "\u2605" : "\u2606"}
         </button>
-      ))}
-      <span id="toolbar-info">mode: {session.permissionMode}</span>
+        <div className="chat-header-info">
+          <span className="chat-header-name">{session.name}</span>
+          <span className="chat-header-project">{session.projectName}</span>
+        </div>
+      </div>
+      <div className="chat-header-right">
+        <div className="chat-header-dropdown-wrap" ref={dropdownRef}>
+          <button
+            className="chat-header-icon-btn"
+            title="Tool policy"
+            onClick={() => setDropdownOpen((v) => !v)}
+          >
+            <span className="policy-icon">{PRESET_ICONS[session.policyPreset]}</span>
+            <span className="policy-chevron">{"\u25BE"}</span>
+          </button>
+          {dropdownOpen && (
+            <div className="policy-dropdown">
+              {PRESETS.map((p) => (
+                <button
+                  key={p}
+                  className={`policy-dropdown-item ${p === session.policyPreset ? "active" : ""}`}
+                  data-preset={p}
+                  onClick={() => { onSetPreset(p); setDropdownOpen(false); }}
+                >
+                  <span className="policy-dropdown-icon">{PRESET_ICONS[p]}</span>
+                  <span className="policy-dropdown-label">{PRESET_LABELS[p]}</span>
+                  {p === session.policyPreset && <span className="policy-dropdown-check">{"\u2713"}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 });

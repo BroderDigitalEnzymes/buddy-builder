@@ -21,6 +21,7 @@ export type SessionData = {
   claudeSessionId: string | null;
   permissionMode: PermissionMode;
   policyPreset: PolicyPreset;
+  favorite: boolean;
   entries: ChatEntry[];
 };
 
@@ -102,6 +103,7 @@ export async function loadPersistedSessions(): Promise<void> {
         claudeSessionId: info.claudeSessionId,
         permissionMode: "default",
         policyPreset: "no-writes",
+        favorite: false,
         entries: [],
       });
     }
@@ -123,6 +125,7 @@ export async function createSession(permissionMode: PermissionMode): Promise<voi
       claudeSessionId: null,
       permissionMode,
       policyPreset: PERMISSION_MODE_PRESETS[permissionMode],
+      favorite: false,
       entries: [{ kind: "system", text: `Session created · ${permissionMode}`, ts: Date.now() }],
     });
     state.activeId = id;
@@ -205,6 +208,13 @@ export async function renameSession(id: string, name: string): Promise<void> {
   } catch (err) {
     console.error("Failed to rename session:", err);
   }
+}
+
+export function toggleFavorite(id: string): void {
+  const data = state.sessions.get(id);
+  if (!data) return;
+  data.favorite = !data.favorite;
+  emit();
 }
 
 export async function resumeSession(id: string): Promise<void> {

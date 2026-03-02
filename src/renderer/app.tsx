@@ -11,12 +11,13 @@ import {
   deleteSession,
   renameSession,
   resumeSession,
+  toggleFavorite,
   loadPersistedSessions,
 } from "./store.js";
 import {
   TitleBar,
   Sidebar,
-  Toolbar,
+  ChatHeader,
   MessageList,
   InputBar,
 } from "./components.js";
@@ -44,6 +45,9 @@ function App() {
   const handleRename = useCallback((id: string, name: string) => renameSession(id, name), []);
   const handleCreate = useCallback((perm: PermissionMode) => createSession(perm), []);
   const handlePreset = useCallback((p: PolicyPreset) => setPreset(p), []);
+  const handleToggleFavorite = useCallback(() => {
+    if (activeId) toggleFavorite(activeId);
+  }, [activeId]);
   const handleSend = useCallback((text: string, images?: ImageData[]) => sendMessage(text, images), []);
   const handleResume = useCallback(() => {
     if (activeId) resumeSession(activeId);
@@ -63,7 +67,7 @@ function App() {
           onCreate={handleCreate}
         />
         <div id="main-area">
-          <Toolbar session={activeSession} onSetPreset={handlePreset} />
+          <ChatHeader session={activeSession} onSetPreset={handlePreset} onToggleFavorite={handleToggleFavorite} />
           <MessageList entries={entries} />
           <InputBar
             disabled={!canSend}
