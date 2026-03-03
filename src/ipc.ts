@@ -42,6 +42,7 @@ export type SessionInfo = {
   readonly state: SessionState;
   readonly claudeSessionId: string | null;
   readonly cwd: string | null;
+  readonly lastActiveAt: number;
 };
 
 export const PermissionModes = ["default", "plan", "acceptEdits", "bypassPermissions"] as const;

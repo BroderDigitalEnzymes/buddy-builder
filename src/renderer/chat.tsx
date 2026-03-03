@@ -1,0 +1,605 @@
+import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { marked } from "marked";
+import type { SessionData } from "./store.js";
+import type { ChatEntry, ImageData, PolicyPreset } from "../ipc.js";
+import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
+
+// Configure marked for safe, synchronous rendering
+marked.setOptions({ async: false, breaks: true });
+
+// ─── Sender helpers ──────────────────────────────────────────────
+
+type Sender = "user" | "claude" | "system";
+
+function getSender(kind: ChatEntry["kind"]): Sender {
+  switch (kind) {
+    case "user": return "user";
+    case "text":
+    case "tool": return "claude";
+    case "system":
+    case "result": return "system";
+  }
+}
+
+function formatTime(ts: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+}
+
+const SENDER_LABELS: Record<Sender, string> = {
+  user: "You",
+  claude: "Claude",
+  system: "System",
+};
+
+const SENDER_ICONS: Record<Sender, React.ReactNode> = {
+  user: (
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="5" r="3" />
+      <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+    </svg>
+  ),
+  claude: (
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13l-1.8-4.2L2 7l4.2-1.8z" />
+    </svg>
+  ),
+  system: (
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="8" r="2" />
+      <path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M13 3l-2 2M5 11l-2 2" strokeWidth="1.5" stroke="#fff" fill="none" />
+    </svg>
+  ),
+};
+
+const AVATAR_CLASSES: Record<Sender, string> = {
+  user: "msg-avatar msg-avatar-user",
+  claude: "msg-avatar msg-avatar-claude",
+  system: "msg-avatar msg-avatar-system",
+};
+
+// ─── Tool entry (collapsible, delegates to view registry) ────────
+
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  running: <span className="tool-icon spinning" />,
+  done:    <span className="tool-icon done" />,
+  blocked: <span className="tool-icon blocked" />,
+};
+
+type ToolEntryProps = {
+  entry: ChatEntry & { kind: "tool" };
+};
+
+export function ToolEntry({ entry }: ToolEntryProps) {
+  const matchedViews = getMatchingViews(entry);
+  const topView = matchedViews[0];
+
+  // Full-replace: custom view takes over entirely (e.g., AskUserQuestion)
+  if (topView?.fullReplace) {
+    return <ToolViewTabs entry={entry} />;
+  }
+
+  // Standard: collapsible <details> with view tabs inside
+  const [open, setOpen] = useState(false);
+
+  return (
+    <details
+      className={`tool-entry tool-${entry.status}`}
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary className="tool-summary">
+        {STATUS_ICONS[entry.status]}
+        <span className="tool-name">{entry.toolName}</span>
+        {entry.detail && <span className="tool-detail">{entry.detail}</span>}
+      </summary>
+      <ToolViewTabs entry={entry} />
+    </details>
+  );
+}
+
+// ─── Markdown text renderer ──────────────────────────────────────
+
+function MarkdownText({ text }: { text: string }) {
+  const html = useMemo(() => marked.parse(text) as string, [text]);
+  return <div className="msg-text prose" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+// ─── Entry content (inner content without layout wrapper) ────────
+
+type EntryContentProps = {
+  entry: ChatEntry;
+  prevKind?: string;
+  nextKind?: string;
+};
+
+function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
+  switch (entry.kind) {
+    case "user":
+      return (
+        <>
+          {entry.images && entry.images.length > 0 && (
+            <div className="msg-images">
+              {entry.images.map((img, i) => (
+                <img key={i} className="msg-image" src={`data:${img.mediaType};base64,${img.base64}`} alt="" />
+              ))}
+            </div>
+          )}
+          <div className="msg-text">{entry.text}</div>
+        </>
+      );
+
+    case "text":
+      return <MarkdownText text={entry.text} />;
+
+    case "tool": {
+      const classes = ["tool-wrap"];
+      if (prevKind === "tool") classes.push("tool-grouped");
+      if (prevKind === "tool" && nextKind !== "tool") classes.push("tool-group-last");
+      if (prevKind !== "tool" && nextKind === "tool") classes.push("tool-group-first");
+      if (prevKind !== "tool" && nextKind !== "tool") classes.push("tool-solo");
+      return (
+        <div className={classes.join(" ")}>
+          <ToolEntry entry={entry} />
+        </div>
+      );
+    }
+
+    default:
+      return null;
+  }
+}
+
+// ─── Message entry (Slack-style row) ─────────────────────────────
+
+type EntryRowProps = {
+  entry: ChatEntry;
+  isGroupStart: boolean;
+  prevKind?: string;
+  nextKind?: string;
+};
+
+export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowProps) {
+  const sender = getSender(entry.kind);
+
+  // System messages: centered pill
+  if (entry.kind === "system") {
+    return (
+      <div className="msg-row msg-row-system">
+        <div className="msg-system-text">{entry.text}</div>
+      </div>
+    );
+  }
+
+  // Result: skip rendering (cost shown in status bar)
+  if (entry.kind === "result") {
+    return null;
+  }
+
+  const avatarClass = AVATAR_CLASSES[sender];
+
+  // Group start: avatar + name + timestamp + content
+  if (isGroupStart) {
+    return (
+      <div className="msg-row msg-row-first">
+        <div className={avatarClass}>
+          {SENDER_ICONS[sender]}
+        </div>
+        <div className="msg-content">
+          <div className="msg-header">
+            <span className="msg-sender">{SENDER_LABELS[sender]}</span>
+            <span className="msg-timestamp">{formatTime(entry.ts)}</span>
+          </div>
+          <EntryContent entry={entry} prevKind={prevKind} nextKind={nextKind} />
+        </div>
+      </div>
+    );
+  }
+
+  // Continuation: hover timestamp + content only
+  return (
+    <div className="msg-row msg-row-continuation">
+      <span className="msg-timestamp-hover">{formatTime(entry.ts)}</span>
+      <div className="msg-content">
+        <EntryContent entry={entry} prevKind={prevKind} nextKind={nextKind} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Message list with auto-scroll + grouping ────────────────────
+
+type MessageListProps = {
+  entries: ChatEntry[];
+  isBusy?: boolean;
+};
+
+export function MessageList({ entries, isBusy }: MessageListProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+
+  const onScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+
+  useEffect(() => {
+    if (stickRef.current) {
+      const el = containerRef.current;
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [entries, entries.length > 0 ? entries[entries.length - 1] : null, isBusy]);
+
+  if (entries.length === 0) {
+    return (
+      <div id="chat" className="chat-area chat-empty" ref={containerRef}>
+        <div className="empty-state">No session. Click <strong>+ New</strong> to start.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div id="chat" className="chat-area" ref={containerRef} onScroll={onScroll}>
+      <div className="messages">
+        {entries.map((entry, i) => {
+          const prevEntry = entries[i - 1];
+          const sender = getSender(entry.kind);
+          const prevSender = prevEntry ? getSender(prevEntry.kind) : null;
+
+          const isGroupStart =
+            i === 0 ||
+            sender !== prevSender ||
+            sender === "system" ||
+            entry.kind === "result" ||
+            (entry.ts - (prevEntry?.ts ?? 0)) > 5 * 60 * 1000;
+
+          return (
+            <EntryRow
+              key={i}
+              entry={entry}
+              isGroupStart={isGroupStart}
+              prevKind={entries[i - 1]?.kind}
+              nextKind={entries[i + 1]?.kind}
+            />
+          );
+        })}
+        {isBusy && (
+          <div className="msg-row msg-row-first thinking-row">
+            <div className="msg-avatar msg-avatar-claude msg-avatar-thinking">
+              {SENDER_ICONS.claude}
+            </div>
+            <div className="msg-content">
+              <div className="msg-header">
+                <span className="msg-sender">Claude</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings modal ──────────────────────────────────────────────
+
+type SettingsModalProps = {
+  open: boolean;
+  onClose: () => void;
+};
+
+export function SettingsModal({ open, onClose }: SettingsModalProps) {
+  const [claudePath, setClaudePath] = useState("");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      (window as any).claude.getConfig().then((cfg: any) => setClaudePath(cfg.claudePath));
+      setStatus("");
+    }
+  }, [open]);
+
+  const handleSave = useCallback(async () => {
+    try {
+      await (window as any).claude.setConfig({ claudePath });
+      setStatus("Saved. Restart sessions for changes to take effect.");
+    } catch (err) {
+      setStatus(`Error: ${err}`);
+    }
+  }, [claudePath]);
+
+  if (!open) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
+        <div className="settings-hero">
+          <img className="settings-logo" src="../assets/icon-256.png" alt="Buddy Builder" />
+          <div className="settings-brand">Buddy Builder</div>
+          <div className="settings-tagline">Your AI pair programming companion</div>
+        </div>
+        <div className="modal-body">
+          <div className="settings-section">
+            <div className="settings-section-title">Configuration</div>
+            <label className="setting-label">
+              Claude CLI path
+              <input
+                className="setting-input"
+                type="text"
+                value={claudePath}
+                onChange={(e) => setClaudePath(e.target.value)}
+                placeholder="claude"
+                spellCheck={false}
+              />
+              <span className="setting-hint">
+                Command name (e.g. "claude") or full path to executable
+              </span>
+            </label>
+          </div>
+          {status && <div className="setting-status">{status}</div>}
+        </div>
+        <div className="modal-footer">
+          <span className="settings-version">v1.0.0</span>
+          <button className="modal-btn" onClick={handleSave}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Chat header (Slack-style) ───────────────────────────────────
+
+const PRESETS: PolicyPreset[] = ["unrestricted", "allow-edits", "no-writes", "read-only"];
+const PRESET_LABELS: Record<PolicyPreset, string> = {
+  "unrestricted": "Unrestricted",
+  "allow-edits": "Allow Edits",
+  "no-writes": "No Writes",
+  "read-only": "Read Only",
+};
+
+const PRESET_ICONS: Record<PolicyPreset, string> = {
+  "unrestricted": "\u26A0",
+  "allow-edits": "\u270E",
+  "no-writes": "\u{1F6E1}",
+  "read-only": "\u{1F512}",
+};
+
+type ChatHeaderProps = {
+  session: SessionData | null;
+  onSetPreset: (p: PolicyPreset) => void;
+  onToggleFavorite: () => void;
+  onPopOut?: (id: string) => void;
+  onPopIn?: () => void;
+};
+
+export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onPopOut, onPopIn }: ChatHeaderProps) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dropdownOpen]);
+
+  if (!session) {
+    return <div id="chat-header" />;
+  }
+
+  return (
+    <div id="chat-header">
+      <div className="chat-header-left">
+        <button
+          className={`chat-header-star ${session.favorite ? "starred" : ""}`}
+          title={session.favorite ? "Remove from favorites" : "Add to favorites"}
+          onClick={onToggleFavorite}
+        >
+          {session.favorite ? "\u2605" : "\u2606"}
+        </button>
+        <div className="chat-header-info">
+          <span className="chat-header-name">{session.name}</span>
+          <span className="chat-header-project">{session.projectName}</span>
+        </div>
+      </div>
+      <div className="chat-header-right">
+        {onPopOut && session && (
+          <button
+            className="chat-header-icon-btn popout-btn"
+            title="Pop out session"
+            onClick={() => onPopOut(session.id)}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M9 2h5v5" /><path d="M14 2L8 8" /><path d="M12 9v5H2V4h5" />
+            </svg>
+          </button>
+        )}
+        {onPopIn && (
+          <button
+            className="chat-header-icon-btn popout-btn"
+            title="Pop back into main window"
+            onClick={onPopIn}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M7 9l-5-5" /><path d="M2 4v5h5" /><path d="M14 2v12H2" />
+            </svg>
+          </button>
+        )}
+        <div className="chat-header-dropdown-wrap" ref={dropdownRef}>
+          <button
+            className="chat-header-icon-btn"
+            title="Tool policy"
+            onClick={() => setDropdownOpen((v) => !v)}
+          >
+            <span className="policy-icon">{PRESET_ICONS[session.policyPreset]}</span>
+            <span className="policy-chevron">{"\u25BE"}</span>
+          </button>
+          {dropdownOpen && (
+            <div className="policy-dropdown">
+              {PRESETS.map((p) => (
+                <button
+                  key={p}
+                  className={`policy-dropdown-item ${p === session.policyPreset ? "active" : ""}`}
+                  data-preset={p}
+                  onClick={() => { onSetPreset(p); setDropdownOpen(false); }}
+                >
+                  <span className="policy-dropdown-icon">{PRESET_ICONS[p]}</span>
+                  <span className="policy-dropdown-label">{PRESET_LABELS[p]}</span>
+                  {p === session.policyPreset && <span className="policy-dropdown-check">{"\u2713"}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ─── Helpers: read clipboard images ──────────────────────────────
+
+function fileToImageData(file: File): Promise<ImageData | null> {
+  const mediaType = file.type as ImageData["mediaType"];
+  if (!["image/jpeg", "image/png", "image/gif", "image/webp"].includes(mediaType)) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1];
+      if (base64) resolve({ base64, mediaType });
+      else resolve(null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── Input bar ───────────────────────────────────────────────────
+
+type InputBarProps = {
+  disabled: boolean;
+  showResume: boolean;
+  onSend: (text: string, images?: ImageData[]) => void;
+  onResume: () => void;
+  onResumeTerminal: () => void;
+};
+
+export const InputBar = memo(function InputBar({ disabled, showResume, onSend, onResume, onResumeTerminal }: InputBarProps) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const prevDisabled = useRef(disabled);
+  const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
+
+  const handleSend = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const text = el.value.trim();
+    if (!text && pendingImages.length === 0) return;
+    el.value = "";
+    el.style.height = "auto";
+    onSend(text || "(image)", pendingImages.length > 0 ? pendingImages : undefined);
+    setPendingImages([]);
+    requestAnimationFrame(() => el.focus());
+  }, [onSend, pendingImages]);
+
+  useEffect(() => {
+    if (prevDisabled.current && !disabled) {
+      ref.current?.focus();
+    }
+    prevDisabled.current = disabled;
+  }, [disabled]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }, [handleSend]);
+
+  const handleInput = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }, []);
+
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length === 0) return;
+    e.preventDefault();
+    const results = await Promise.all(imageFiles.map(fileToImageData));
+    const valid = results.filter((r): r is ImageData => r !== null);
+    if (valid.length > 0) {
+      setPendingImages((prev) => [...prev, ...valid]);
+    }
+  }, []);
+
+  const removeImage = useCallback((index: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  if (showResume) {
+    return (
+      <div id="input-bar">
+        <div className="resume-actions">
+          <button className="resume-btn" onClick={onResume}>
+            Resume Session
+          </button>
+          <button className="resume-terminal-btn" onClick={onResumeTerminal} title="Resume in Terminal">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+              <path d="M2 3l5 4-5 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="9" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div id="input-bar">
+      {pendingImages.length > 0 && (
+        <div className="image-preview-bar">
+          {pendingImages.map((img, i) => (
+            <div key={i} className="image-preview-thumb">
+              <img src={`data:${img.mediaType};base64,${img.base64}`} alt="" />
+              <button className="image-preview-remove" onClick={() => removeImage(i)}>&times;</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="input-row">
+        <textarea
+          ref={ref}
+          id="input"
+          placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : "Message Claude..."}
+          rows={1}
+          disabled={disabled}
+          onKeyDown={handleKeyDown}
+          onInput={handleInput}
+          onPaste={handlePaste}
+        />
+        <button id="send" disabled={disabled} onClick={handleSend}>
+          Send
+        </button>
+      </div>
+    </div>
+  );
+});

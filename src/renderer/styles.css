@@ -129,12 +129,12 @@ body {
 /* ═══ Sidebar ═════════════════════════════════════════════════ */
 
 #sidebar {
-  width: var(--sidebar-width);
   background: var(--bg-sidebar);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
+  position: relative;
 }
 
 /* ─── Sidebar search ─── */
@@ -259,6 +259,33 @@ body {
 
 .sidebar-drag:hover::after {
   opacity: 0.6;
+}
+
+/* ─── Sidebar horizontal resize handle ─── */
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+.sidebar-resize-handle:hover {
+  background: var(--accent);
+  opacity: 0.3;
+}
+
+/* ─── Session time label ─── */
+
+.session-time {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .session-item {

@@ -29,6 +29,7 @@ export type SessionData = {
   permissionMode: PermissionMode;
   policyPreset: PolicyPreset;
   favorite: boolean;
+  lastActiveAt: number;
   entries: ChatEntry[];
 };
 
@@ -115,6 +116,7 @@ export async function loadPersistedSessions(): Promise<void> {
         permissionMode: "default",
         policyPreset: "no-writes",
         favorite: false,
+        lastActiveAt: info.lastActiveAt,
         entries: [],
       });
     }
@@ -143,6 +145,7 @@ export async function createSession(permissionMode: PermissionMode, cwd?: string
       permissionMode,
       policyPreset: PERMISSION_MODE_PRESETS[permissionMode],
       favorite: false,
+      lastActiveAt: Date.now(),
       entries: [{ kind: "system", text: `Session created · ${permissionMode}`, ts: Date.now() }],
     });
     state.activeId = id;
@@ -274,6 +277,9 @@ function handleEvent(event: SessionEvent): void {
 
   // Unified entry building (text, tool lifecycle, result, error, exit)
   applyEvent(data.entries, event);
+
+  // Keep lastActiveAt fresh
+  if (event.kind !== "popoutChanged") data.lastActiveAt = Date.now();
 
   // Store-specific side effects
   switch (event.kind) {
