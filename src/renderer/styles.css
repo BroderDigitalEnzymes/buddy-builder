@@ -379,20 +379,22 @@ body {
   background: var(--hover-bg, rgba(255,255,255,0.04));
 }
 
-.dir-tree-chevron {
-  display: inline-block;
-  width: 10px;
-  font-size: 9px;
+.dir-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  font-size: 13px;
+  font-weight: 600;
   flex-shrink: 0;
-  transition: transform 0.15s;
+  color: var(--text-muted);
+  opacity: 0.7;
 }
 
-.dir-tree-chevron::after {
-  content: "\25BE";
-}
-
-.dir-tree-chevron.collapsed::after {
-  content: "\25B8";
+.dir-tree-toggle-spacer {
+  display: inline-block;
+  width: 14px;
+  flex-shrink: 0;
 }
 
 .dir-tree-name {
@@ -729,44 +731,29 @@ body {
   flex-shrink: 0;
 }
 
-/* Thinking animation on Claude's avatar */
-.msg-avatar-thinking {
-  animation: thinking-glow 1.5s ease-in-out infinite;
+/* Thinking avatar animation */
+.thinking-row .msg-avatar-thinking {
+  animation: thinking-pulse 1.8s ease-in-out infinite;
 }
 
-@keyframes thinking-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 30, 90, 0); }
-  50% { box-shadow: 0 0 8px 3px rgba(224, 30, 90, 0.4); }
+.thinking-row .msg-avatar-thinking svg {
+  animation: thinking-spin 2.4s linear infinite;
 }
 
-/* Thinking dots indicator */
-.thinking-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+@keyframes thinking-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(224, 30, 90, 0);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 10px 4px rgba(224, 30, 90, 0.35);
+    transform: scale(1.1);
+  }
 }
 
-.thinking-dots {
-  display: flex;
-  gap: 4px;
-  padding: 6px 0;
-}
-
-.thinking-dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  animation: thinking-bounce 1.2s ease-in-out infinite;
-}
-
-.thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
-
-@keyframes thinking-bounce {
-  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
-  30% { opacity: 1; transform: translateY(-3px); }
+@keyframes thinking-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* ─── Content column ─── */

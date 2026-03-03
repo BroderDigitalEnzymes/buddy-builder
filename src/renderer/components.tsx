@@ -161,12 +161,11 @@ function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
 type EntryRowProps = {
   entry: ChatEntry;
   isGroupStart: boolean;
-  isThinking?: boolean;
   prevKind?: string;
   nextKind?: string;
 };
 
-export function EntryRow({ entry, isGroupStart, prevKind, nextKind, isThinking }: EntryRowProps) {
+export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowProps) {
   const sender = getSender(entry.kind);
 
   // System messages: centered pill
@@ -183,7 +182,7 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind, isThinking }
     return null;
   }
 
-  const avatarClass = AVATAR_CLASSES[sender] + (isThinking ? " msg-avatar-thinking" : "");
+  const avatarClass = AVATAR_CLASSES[sender];
 
   // Group start: avatar + name + timestamp + content
   if (isGroupStart) {
@@ -246,20 +245,6 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
     );
   }
 
-  // Find the last claude group-start index for thinking animation
-  let lastClaudeGroupIdx = -1;
-  if (isBusy) {
-    for (let i = entries.length - 1; i >= 0; i--) {
-      if (getSender(entries[i].kind) === "claude") {
-        // Walk back to find the group start
-        let j = i;
-        while (j > 0 && getSender(entries[j - 1].kind) === "claude") j--;
-        lastClaudeGroupIdx = j;
-        break;
-      }
-    }
-  }
-
   return (
     <div id="chat" className="chat-area" ref={containerRef} onScroll={onScroll}>
       <div className="messages">
@@ -280,17 +265,20 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
               key={i}
               entry={entry}
               isGroupStart={isGroupStart}
-              isThinking={isBusy && isGroupStart && i === lastClaudeGroupIdx}
               prevKind={entries[i - 1]?.kind}
               nextKind={entries[i + 1]?.kind}
             />
           );
         })}
         {isBusy && (
-          <div className="msg-row thinking-row">
-            <div className="msg-avatar-spacer" />
-            <div className="thinking-dots">
-              <span /><span /><span />
+          <div className="msg-row msg-row-first thinking-row">
+            <div className="msg-avatar msg-avatar-claude msg-avatar-thinking">
+              {SENDER_ICONS.claude}
+            </div>
+            <div className="msg-content">
+              <div className="msg-header">
+                <span className="msg-sender">Claude</span>
+              </div>
             </div>
           </div>
         )}
@@ -571,6 +559,7 @@ function SessionItem({ session: s, depth, activeId, live, onSwitch, onKill, onDe
       style={{ paddingLeft: `${12 + depth * 14}px` }}
       onClick={() => onSwitch(s.id)}
     >
+      <span className="dir-tree-toggle-spacer" />
       <span className={`session-dot state-${s.state}`} />
       <EditableSessionLabel name={s.name} onRename={(name) => onRename(s.id, name)} />
       {live ? (
@@ -615,12 +604,25 @@ function DirTreeNodeView({
         style={{ paddingLeft: `${12 + depth * 14}px` }}
         onClick={() => onToggle(node.fullPath)}
       >
-        <span className={`dir-tree-chevron ${isOpen ? "" : "collapsed"}`} />
+        <span className="dir-tree-toggle">{isOpen ? "\u2212" : "+"}</span>
         <span className="dir-tree-name">{node.segment}</span>
         <span className="dir-tree-count">{countSessions(node)}</span>
       </button>
       {isOpen && (
         <>
+          {node.sessions.map(s => (
+            <SessionItem
+              key={s.id}
+              session={s}
+              depth={depth + 1}
+              activeId={activeId}
+              live={live}
+              onSwitch={onSwitch}
+              onKill={onKill}
+              onDelete={onDelete}
+              onRename={onRename}
+            />
+          ))}
           {childNodes.map(child => (
             <DirTreeNodeView
               key={child.fullPath}
@@ -635,19 +637,6 @@ function DirTreeNodeView({
               onDelete={onDelete}
               onRename={onRename}
               live={live}
-            />
-          ))}
-          {node.sessions.map(s => (
-            <SessionItem
-              key={s.id}
-              session={s}
-              depth={depth + 1}
-              activeId={activeId}
-              live={live}
-              onSwitch={onSwitch}
-              onKill={onKill}
-              onDelete={onDelete}
-              onRename={onRename}
             />
           ))}
         </>
@@ -690,19 +679,6 @@ function DirTreeList({
       {tree.commonPrefix && tree.commonPrefix !== "/" && (
         <div className="dir-tree-prefix" title={tree.commonPrefix}>{tree.commonPrefix}</div>
       )}
-      {tree.rootSessions.map(s => (
-        <SessionItem
-          key={s.id}
-          session={s}
-          depth={0}
-          activeId={activeId}
-          live={live}
-          onSwitch={onSwitch}
-          onKill={onKill}
-          onDelete={onDelete}
-          onRename={onRename}
-        />
-      ))}
       {tree.roots.map(node => (
         <DirTreeNodeView
           key={node.fullPath}
@@ -719,6 +695,19 @@ function DirTreeList({
           live={live}
         />
       ))}
+      {tree.rootSessions.map(s => (
+        <SessionItem
+          key={s.id}
+          session={s}
+          depth={0}
+          activeId={activeId}
+          live={live}
+          onSwitch={onSwitch}
+          onKill={onKill}
+          onDelete={onDelete}
+          onRename={onRename}
+        />
+      ))}
       {tree.unknown.length > 0 && (
         <div className="dir-tree-node">
           <button
@@ -726,7 +715,7 @@ function DirTreeList({
             style={{ paddingLeft: "12px" }}
             onClick={() => onToggle("__unknown__")}
           >
-            <span className={`dir-tree-chevron ${unknownOpen ? "" : "collapsed"}`} />
+            <span className="dir-tree-toggle">{unknownOpen ? "\u2212" : "+"}</span>
             <span className="dir-tree-name">(unknown)</span>
             <span className="dir-tree-count">{tree.unknown.length}</span>
           </button>
