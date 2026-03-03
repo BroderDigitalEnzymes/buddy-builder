@@ -343,36 +343,43 @@ body {
   opacity: 0.6;
 }
 
-/* ─── Project groups ─── */
+/* ─── Directory tree ─── */
 
-.project-group {
-  margin-bottom: 2px;
+.dir-tree-prefix {
+  padding: 4px 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.5;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
 }
 
-.project-header {
+.dir-tree-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  padding: 6px 12px;
+  padding: 4px 12px;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   font-family: inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   text-align: left;
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.12s;
 }
 
-.project-header:hover {
+.dir-tree-header:hover {
   color: var(--text-secondary);
+  background: var(--hover-bg, rgba(255,255,255,0.04));
 }
 
-.project-chevron {
+.dir-tree-chevron {
   display: inline-block;
   width: 10px;
   font-size: 9px;
@@ -380,32 +387,29 @@ body {
   transition: transform 0.15s;
 }
 
-.project-chevron::after {
+.dir-tree-chevron::after {
   content: "\25BE";
 }
 
-.project-chevron.collapsed::after {
+.dir-tree-chevron.collapsed::after {
   content: "\25B8";
 }
 
-.project-name {
+.dir-tree-name {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
 }
 
-.project-count {
+.dir-tree-count {
   font-size: 10px;
   color: var(--text-muted);
-  opacity: 0.6;
-  font-weight: 400;
+  opacity: 0.5;
   min-width: 16px;
   text-align: right;
-}
-
-.project-group .session-item {
-  padding-left: 28px;
 }
 
 /* Inline edit input for session name */

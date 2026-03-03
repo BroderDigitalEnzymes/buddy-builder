@@ -40,6 +40,7 @@ export type SessionInfo = {
   readonly projectName: string;
   readonly state: SessionState;
   readonly claudeSessionId: string | null;
+  readonly cwd: string | null;
 };
 
 export const PermissionModes = ["default", "plan", "acceptEdits", "bypassPermissions"] as const;

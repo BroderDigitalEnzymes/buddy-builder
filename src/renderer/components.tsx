@@ -466,32 +466,131 @@ function fuzzyMatch(query: string, target: string): boolean {
   return qi === q.length;
 }
 
-type ProjectGroup = { project: string; items: SessionData[] };
+// ─── Directory tree types and builder ─────────────────────────────
 
-function groupByProject(sessions: SessionData[], query: string): ProjectGroup[] {
-  const q = query.trim();
-  const groups: ProjectGroup[] = [];
-  const map = new Map<string, SessionData[]>();
-  const order: string[] = [];
-  for (const s of sessions) {
-    if (q && !fuzzyMatch(q, s.projectName) && !fuzzyMatch(q, s.name)) continue;
-    const p = s.projectName;
-    if (!map.has(p)) { map.set(p, []); order.push(p); }
-    map.get(p)!.push(s);
-  }
-  for (const p of order) groups.push({ project: p, items: map.get(p)! });
-  return groups;
+type DirTreeNode = {
+  segment: string;
+  fullPath: string;
+  children: Map<string, DirTreeNode>;
+  sessions: SessionData[];
+};
+
+type DirTree = {
+  commonPrefix: string;
+  roots: DirTreeNode[];
+  rootSessions: SessionData[];  // sessions whose cwd equals the common prefix
+  unknown: SessionData[];
+};
+
+function pathSegments(p: string): string[] {
+  return p.split("/").filter(Boolean);
 }
 
-// ─── Reusable session group list ─────────────────────────────────
+function findCommonPrefix(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const segArrays = paths.map(pathSegments);
+  const minLen = Math.min(...segArrays.map(s => s.length));
+  let shared = 0;
+  for (let i = 0; i < minLen; i++) {
+    if (segArrays.every(a => a[i] === segArrays[0][i])) shared = i + 1;
+    else break;
+  }
+  if (shared === 0) return "/";
+  return "/" + segArrays[0].slice(0, shared).join("/");
+}
 
-type SessionGroupListProps = {
-  groups: ProjectGroup[];
+function countSessions(node: DirTreeNode): number {
+  let count = node.sessions.length;
+  for (const child of node.children.values()) count += countSessions(child);
+  return count;
+}
+
+function buildDirTree(sessions: SessionData[], filter: string): DirTree {
+  const q = filter.trim();
+  const unknown: SessionData[] = [];
+  const withCwd: SessionData[] = [];
+
+  for (const s of sessions) {
+    if (q && !fuzzyMatch(q, s.name) && !fuzzyMatch(q, s.cwd ?? "") && !fuzzyMatch(q, s.projectName)) continue;
+    if (s.cwd) withCwd.push(s);
+    else unknown.push(s);
+  }
+
+  const cwds = withCwd.map(s => s.cwd!);
+  const commonPrefix = findCommonPrefix(cwds);
+  const prefixSegs = pathSegments(commonPrefix);
+  const rootMap = new Map<string, DirTreeNode>();
+  const rootSessions: SessionData[] = [];
+
+  for (const s of withCwd) {
+    const segs = pathSegments(s.cwd!);
+    const relSegs = segs.slice(prefixSegs.length);
+
+    if (relSegs.length === 0) {
+      rootSessions.push(s);
+      continue;
+    }
+
+    let currentMap = rootMap;
+    let currentPath = commonPrefix;
+    let node: DirTreeNode | undefined;
+
+    for (const seg of relSegs) {
+      currentPath = currentPath + "/" + seg;
+      if (!currentMap.has(seg)) {
+        currentMap.set(seg, { segment: seg, fullPath: currentPath, children: new Map(), sessions: [] });
+      }
+      node = currentMap.get(seg)!;
+      currentMap = node.children;
+    }
+    node!.sessions.push(s);
+  }
+
+  const roots = [...rootMap.values()].sort((a, b) => a.segment.localeCompare(b.segment));
+  return { commonPrefix, roots, rootSessions, unknown };
+}
+
+// ─── Session item (extracted for reuse) ───────────────────────────
+
+type SessionItemProps = {
+  session: SessionData;
+  depth: number;
   activeId: string | null;
-  expanded: Set<string>;
-  defaultOpen: boolean;
+  live: boolean;
+  onSwitch: (id: string) => void;
+  onKill: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
+};
+
+function SessionItem({ session: s, depth, activeId, live, onSwitch, onKill, onDelete, onRename }: SessionItemProps) {
+  const isDead = s.state === "dead";
+  return (
+    <button
+      className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""}`}
+      style={{ paddingLeft: `${12 + depth * 14}px` }}
+      onClick={() => onSwitch(s.id)}
+    >
+      <span className={`session-dot state-${s.state}`} />
+      <EditableSessionLabel name={s.name} onRename={(name) => onRename(s.id, name)} />
+      {live ? (
+        <span className="session-kill" title="Terminate session" onClick={(e) => { e.stopPropagation(); onKill(s.id); }}>&#9632;</span>
+      ) : (
+        <span className="session-close" title="Remove from list" onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}>&times;</span>
+      )}
+    </button>
+  );
+}
+
+// ─── Directory tree node (recursive) ──────────────────────────────
+
+type DirTreeNodeViewProps = {
+  node: DirTreeNode;
+  depth: number;
+  activeId: string | null;
+  expandedPaths: Set<string>;
   isSearching: boolean;
-  onToggle: (project: string) => void;
+  onToggle: (path: string) => void;
   onSwitch: (id: string) => void;
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
@@ -499,11 +598,84 @@ type SessionGroupListProps = {
   live: boolean;
 };
 
-function SessionGroupList({
-  groups, activeId, expanded, defaultOpen, isSearching,
+function DirTreeNodeView({
+  node, depth, activeId, expandedPaths, isSearching,
   onToggle, onSwitch, onKill, onDelete, onRename, live,
-}: SessionGroupListProps) {
-  if (groups.length === 0) {
+}: DirTreeNodeViewProps) {
+  const defaultOpen = true;
+  const userToggled = expandedPaths.has(node.fullPath);
+  const isOpen = defaultOpen ? !userToggled : userToggled;
+
+  const childNodes = [...node.children.values()].sort((a, b) => a.segment.localeCompare(b.segment));
+
+  return (
+    <div className="dir-tree-node">
+      <button
+        className="dir-tree-header"
+        style={{ paddingLeft: `${12 + depth * 14}px` }}
+        onClick={() => onToggle(node.fullPath)}
+      >
+        <span className={`dir-tree-chevron ${isOpen ? "" : "collapsed"}`} />
+        <span className="dir-tree-name">{node.segment}</span>
+        <span className="dir-tree-count">{countSessions(node)}</span>
+      </button>
+      {isOpen && (
+        <>
+          {childNodes.map(child => (
+            <DirTreeNodeView
+              key={child.fullPath}
+              node={child}
+              depth={depth + 1}
+              activeId={activeId}
+              expandedPaths={expandedPaths}
+              isSearching={isSearching}
+              onToggle={onToggle}
+              onSwitch={onSwitch}
+              onKill={onKill}
+              onDelete={onDelete}
+              onRename={onRename}
+              live={live}
+            />
+          ))}
+          {node.sessions.map(s => (
+            <SessionItem
+              key={s.id}
+              session={s}
+              depth={depth + 1}
+              activeId={activeId}
+              live={live}
+              onSwitch={onSwitch}
+              onKill={onKill}
+              onDelete={onDelete}
+              onRename={onRename}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Directory tree list ──────────────────────────────────────────
+
+type DirTreeListProps = {
+  tree: DirTree;
+  activeId: string | null;
+  expandedPaths: Set<string>;
+  isSearching: boolean;
+  onToggle: (path: string) => void;
+  onSwitch: (id: string) => void;
+  onKill: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
+  live: boolean;
+};
+
+function DirTreeList({
+  tree, activeId, expandedPaths, isSearching,
+  onToggle, onSwitch, onKill, onDelete, onRename, live,
+}: DirTreeListProps) {
+  if (tree.roots.length === 0 && tree.rootSessions.length === 0 && tree.unknown.length === 0) {
     return (
       <div className="panel-empty">
         {live ? "No active sessions" : "No sessions found"}
@@ -511,53 +683,68 @@ function SessionGroupList({
     );
   }
 
+  const unknownOpen = isSearching || expandedPaths.has("__unknown__");
+
   return (
     <>
-      {groups.map(({ project, items }) => {
-        const isOpen = isSearching || (defaultOpen ? !expanded.has(project) : expanded.has(project));
-        return (
-          <div key={project} className="project-group">
-            <button className="project-header" onClick={() => onToggle(project)}>
-              <span className={`project-chevron ${isOpen ? "" : "collapsed"}`} />
-              <span className="project-name">{project}</span>
-              <span className="project-count">{items.length}</span>
-            </button>
-            {isOpen && items.map((s) => {
-              const isDead = s.state === "dead";
-              return (
-                <button
-                  key={s.id}
-                  className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""}`}
-                  onClick={() => onSwitch(s.id)}
-                >
-                  <span className={`session-dot state-${s.state}`} />
-                  <EditableSessionLabel
-                    name={s.name}
-                    onRename={(name) => onRename(s.id, name)}
-                  />
-                  {live ? (
-                    <span
-                      className="session-kill"
-                      title="Terminate session"
-                      onClick={(e) => { e.stopPropagation(); onKill(s.id); }}
-                    >
-                      &#9632;
-                    </span>
-                  ) : (
-                    <span
-                      className="session-close"
-                      title="Remove from list"
-                      onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
-                    >
-                      &times;
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        );
-      })}
+      {tree.commonPrefix && tree.commonPrefix !== "/" && (
+        <div className="dir-tree-prefix" title={tree.commonPrefix}>{tree.commonPrefix}</div>
+      )}
+      {tree.rootSessions.map(s => (
+        <SessionItem
+          key={s.id}
+          session={s}
+          depth={0}
+          activeId={activeId}
+          live={live}
+          onSwitch={onSwitch}
+          onKill={onKill}
+          onDelete={onDelete}
+          onRename={onRename}
+        />
+      ))}
+      {tree.roots.map(node => (
+        <DirTreeNodeView
+          key={node.fullPath}
+          node={node}
+          depth={0}
+          activeId={activeId}
+          expandedPaths={expandedPaths}
+          isSearching={isSearching}
+          onToggle={onToggle}
+          onSwitch={onSwitch}
+          onKill={onKill}
+          onDelete={onDelete}
+          onRename={onRename}
+          live={live}
+        />
+      ))}
+      {tree.unknown.length > 0 && (
+        <div className="dir-tree-node">
+          <button
+            className="dir-tree-header"
+            style={{ paddingLeft: "12px" }}
+            onClick={() => onToggle("__unknown__")}
+          >
+            <span className={`dir-tree-chevron ${unknownOpen ? "" : "collapsed"}`} />
+            <span className="dir-tree-name">(unknown)</span>
+            <span className="dir-tree-count">{tree.unknown.length}</span>
+          </button>
+          {unknownOpen && tree.unknown.map(s => (
+            <SessionItem
+              key={s.id}
+              session={s}
+              depth={1}
+              activeId={activeId}
+              live={live}
+              onSwitch={onSwitch}
+              onKill={onKill}
+              onDelete={onDelete}
+              onRename={onRename}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -614,8 +801,8 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
   const liveSessions = useMemo(() => sessions.filter((s) => s.state !== "dead"), [sessions]);
   const deadSessions = useMemo(() => sessions.filter((s) => s.state === "dead"), [sessions]);
 
-  const liveGroups = useMemo(() => groupByProject(liveSessions, search), [liveSessions, search]);
-  const histGroups = useMemo(() => groupByProject(deadSessions, search), [deadSessions, search]);
+  const liveTree = useMemo(() => buildDirTree(liveSessions, search), [liveSessions, search]);
+  const histTree = useMemo(() => buildDirTree(deadSessions, search), [deadSessions, search]);
 
   const toggleLive = useCallback((p: string) => {
     setLiveExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
@@ -646,11 +833,10 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
           <div className="sidebar-panel" style={{ flex: `0 0 ${topRatio * 100}%` }}>
             <div className="panel-label">Live</div>
             <div className="panel-scroll">
-              <SessionGroupList
-                groups={liveGroups}
+              <DirTreeList
+                tree={liveTree}
                 activeId={activeId}
-                expanded={liveExpanded}
-                defaultOpen={true}
+                expandedPaths={liveExpanded}
                 isSearching={isSearching}
                 onToggle={toggleLive}
                 onSwitch={onSwitch}
@@ -665,11 +851,10 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
           <div className="sidebar-panel" style={{ flex: 1 }}>
             <div className="panel-label">History</div>
             <div className="panel-scroll">
-              <SessionGroupList
-                groups={histGroups}
+              <DirTreeList
+                tree={histTree}
                 activeId={activeId}
-                expanded={histExpanded}
-                defaultOpen={false}
+                expandedPaths={histExpanded}
                 isSearching={isSearching}
                 onToggle={toggleHist}
                 onSwitch={onSwitch}

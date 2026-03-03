@@ -304,6 +304,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         projectName: s.projectName,
         state: s.session ? s.session.state : "dead" as const,
         claudeSessionId: s.claudeSessionId,
+        cwd: s.cwd,
       }));
     },
 

@@ -19,6 +19,7 @@ export type SessionData = {
   projectName: string;
   state: string;
   claudeSessionId: string | null;
+  cwd: string | null;
   permissionMode: PermissionMode;
   policyPreset: PolicyPreset;
   favorite: boolean;
@@ -101,6 +102,7 @@ export async function loadPersistedSessions(): Promise<void> {
         projectName: info.projectName,
         state: info.state,
         claudeSessionId: info.claudeSessionId,
+        cwd: info.cwd,
         permissionMode: "default",
         policyPreset: "no-writes",
         favorite: false,
@@ -123,6 +125,7 @@ export async function createSession(permissionMode: PermissionMode): Promise<voi
       projectName: "(new)",
       state: "idle",
       claudeSessionId: null,
+      cwd: null,
       permissionMode,
       policyPreset: PERMISSION_MODE_PRESETS[permissionMode],
       favorite: false,
