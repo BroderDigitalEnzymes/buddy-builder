@@ -44,7 +44,7 @@ function App() {
   const handleKill = useCallback((id: string) => killSession(id), []);
   const handleDelete = useCallback((id: string) => deleteSession(id), []);
   const handleRename = useCallback((id: string, name: string) => renameSession(id, name), []);
-  const handleCreate = useCallback((perm: PermissionMode) => createSession(perm), []);
+  const handleCreate = useCallback((perm: PermissionMode, cwd?: string) => createSession(perm, cwd), []);
   const handlePreset = useCallback((p: PolicyPreset) => setPreset(p), []);
   const handleToggleFavorite = useCallback(() => {
     if (activeId) toggleFavorite(activeId);

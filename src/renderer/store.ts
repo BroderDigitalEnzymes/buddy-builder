@@ -115,17 +115,17 @@ export async function loadPersistedSessions(): Promise<void> {
   }
 }
 
-export async function createSession(permissionMode: PermissionMode): Promise<void> {
+export async function createSession(permissionMode: PermissionMode, cwd?: string): Promise<void> {
   try {
-    const id = await api().createSession({ permissionMode });
+    const id = await api().createSession({ permissionMode, cwd });
     state.counter++;
     state.sessions.set(id, {
       id,
       name: `Session ${state.counter}`,
-      projectName: "(new)",
+      projectName: cwd ?? "(new)",
       state: "idle",
       claudeSessionId: null,
-      cwd: null,
+      cwd: cwd ?? null,
       permissionMode,
       policyPreset: PERMISSION_MODE_PRESETS[permissionMode],
       favorite: false,
@@ -135,6 +135,14 @@ export async function createSession(permissionMode: PermissionMode): Promise<voi
     emit();
   } catch (err) {
     console.error("Failed to create session:", err);
+  }
+}
+
+export async function pickFolder(): Promise<string | null> {
+  try {
+    return await api().pickFolder();
+  } catch {
+    return null;
   }
 }
 

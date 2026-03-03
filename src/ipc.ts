@@ -65,6 +65,7 @@ export const PRESET_BLOCKED_TOOLS: Record<PolicyPreset, readonly string[]> = {
 
 export type CreateSessionOptions = {
   readonly permissionMode?: PermissionMode;
+  readonly cwd?: string;
 };
 
 /** Map a UI permission mode to an initial tool policy preset. */
@@ -119,6 +120,7 @@ export type InvokeContract = {
   getSessionEntries: { in: { sessionId: string }; out: ChatEntry[] };
   getConfig:         { in: undefined; out: AppConfig };
   setConfig:         { in: AppConfig; out: void };
+  pickFolder:        { in: undefined; out: string | null };
   takeScreenshot:    { in: { filename?: string } | undefined; out: string };
   winMinimize:       { in: undefined; out: void };
   winMaximize:       { in: undefined; out: void };
@@ -180,7 +182,7 @@ export const INVOKE_CHANNELS = [
   "createSession", "sendMessage", "answerQuestion", "killSession",
   "listSessions", "updatePolicy", "getPolicy",
   "renameSession", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
-  "getConfig", "setConfig", "takeScreenshot",
+  "getConfig", "setConfig", "pickFolder", "takeScreenshot",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];
 

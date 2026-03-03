@@ -184,9 +184,11 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const now = Date.now();
 
       const permMode = options?.permissionMode ?? "default";
+      const cwd = options?.cwd ?? null;
       const config: SessionConfig = {
         claudePath,
         permissionMode: permMode,
+        cwd: cwd ?? undefined,
       };
 
       const session = await createSession(config);
@@ -195,10 +197,10 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const managed: ManagedSession = {
         id,
         name: `Session ${counter}`,
-        projectName: "(new)",
+        projectName: cwd ?? "(new)",
         session,
         claudeSessionId: null,
-        cwd: null,
+        cwd,
         transcriptPath: null,
         policy,
         permissionMode: permMode,

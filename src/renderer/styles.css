@@ -414,6 +414,33 @@ body {
   text-align: right;
 }
 
+.dir-tree-new {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+
+.dir-tree-header:hover .dir-tree-new {
+  display: inline-flex;
+}
+
+.dir-tree-header:hover .dir-tree-count {
+  display: none;
+}
+
+.dir-tree-new:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.1);
+}
+
 /* Inline edit input for session name */
 .session-label-input {
   flex: 1;

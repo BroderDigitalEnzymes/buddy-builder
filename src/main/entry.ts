@@ -113,6 +113,14 @@ function setupIpc(mgr: SessionManager): void {
     getSessionEntries: ({ sessionId }) => mgr.getEntries(sessionId),
     getConfig:         () => loadConfig(),
     setConfig:         (config) => { saveConfig(config); },
+    pickFolder: async () => {
+      if (!mainWindow) return null;
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openDirectory"],
+        title: "Choose project directory",
+      });
+      return result.canceled ? null : result.filePaths[0] ?? null;
+    },
     takeScreenshot: async (opts) => {
       if (!mainWindow) throw new Error("No window");
       const image = await mainWindow.webContents.capturePage();

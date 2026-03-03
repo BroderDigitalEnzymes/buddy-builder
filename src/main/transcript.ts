@@ -34,23 +34,9 @@ export function claudeProjectsRoot(): string {
  *      "C--t-buddy-builder"       → "buddy-builder"
  */
 function decodeProjectName(encoded: string): string {
-  // Strip leading drive letter prefix like "C--"
-  const noDrive = encoded.replace(/^[A-Z]--/, "");
-  // Take the last path segment (everything after the last dash-separated path component)
-  const parts = noDrive.split("-");
-  // Walk backwards to find a meaningful short name (last 1-2 non-empty segments)
-  // The encoding replaced "/" and "\" with "-", so "eran-projects-heal-ai" had path "eran/projects/heal-ai"
-  // We want the leaf: "heal-ai". But segments can themselves contain dashes.
-  // Simple heuristic: take everything after the last known common prefix
-  const common = ["users", "eran", "projects", "t"];
-  let startIdx = 0;
-  for (let i = 0; i < parts.length; i++) {
-    if (common.includes(parts[i].toLowerCase())) startIdx = i + 1;
-  }
-  const meaningful = parts.slice(startIdx);
-  if (meaningful.length > 0) return meaningful.join("-");
-  // Fallback: use last segment, or the full noDrive string
-  return parts[parts.length - 1] || noDrive || encoded;
+  // The encoding replaced :/\ with "-", so "-Users-tom-code-foo" was "/Users/tom/code/foo".
+  // Reverse: replace leading "-" with "/" and remaining "-" with "/".
+  return "/" + encoded.replace(/^-/, "").replace(/-/g, "/");
 }
 
 // ─── Discovery ──────────────────────────────────────────────────

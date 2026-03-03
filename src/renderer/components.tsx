@@ -1,6 +1,6 @@
 import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { marked } from "marked";
-import type { SessionData } from "./store.js";
+import { pickFolder, type SessionData } from "./store.js";
 import type { ChatEntry, ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
 import { WindowControls } from "./window-controls.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views.js";
@@ -437,7 +437,7 @@ type SidebarProps = {
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
-  onCreate: (perm: PermissionMode) => void;
+  onCreate: (perm: PermissionMode, cwd?: string) => void;
 };
 
 /**
@@ -584,12 +584,13 @@ type DirTreeNodeViewProps = {
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
+  onCreate: (cwd: string) => void;
   live: boolean;
 };
 
 function DirTreeNodeView({
   node, depth, activeId, expandedPaths, isSearching,
-  onToggle, onSwitch, onKill, onDelete, onRename, live,
+  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, live,
 }: DirTreeNodeViewProps) {
   const defaultOpen = true;
   const userToggled = expandedPaths.has(node.fullPath);
@@ -607,6 +608,11 @@ function DirTreeNodeView({
         <span className="dir-tree-toggle">{isOpen ? "\u2212" : "+"}</span>
         <span className="dir-tree-name">{node.segment}</span>
         <span className="dir-tree-count">{countSessions(node)}</span>
+        <span
+          className="dir-tree-new"
+          title={`New session in ${node.fullPath}`}
+          onClick={(e) => { e.stopPropagation(); onCreate(node.fullPath); }}
+        >+</span>
       </button>
       {isOpen && (
         <>
@@ -636,6 +642,7 @@ function DirTreeNodeView({
               onKill={onKill}
               onDelete={onDelete}
               onRename={onRename}
+              onCreate={onCreate}
               live={live}
             />
           ))}
@@ -657,12 +664,13 @@ type DirTreeListProps = {
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
+  onCreate: (cwd: string) => void;
   live: boolean;
 };
 
 function DirTreeList({
   tree, activeId, expandedPaths, isSearching,
-  onToggle, onSwitch, onKill, onDelete, onRename, live,
+  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, live,
 }: DirTreeListProps) {
   if (tree.roots.length === 0 && tree.rootSessions.length === 0 && tree.unknown.length === 0) {
     return (
@@ -692,6 +700,7 @@ function DirTreeList({
           onKill={onKill}
           onDelete={onDelete}
           onRename={onRename}
+          onCreate={onCreate}
           live={live}
         />
       ))}
@@ -799,6 +808,11 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
   const toggleHist = useCallback((p: string) => {
     setHistExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
   }, []);
+  const handleCreateInDir = useCallback((cwd: string) => onCreate(perm, cwd), [perm, onCreate]);
+  const handleBrowse = useCallback(async () => {
+    const folder = await pickFolder();
+    if (folder) onCreate(perm, folder);
+  }, [perm, onCreate]);
 
   return (
     <>
@@ -832,6 +846,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
                 onKill={onKill}
                 onDelete={onDelete}
                 onRename={onRename}
+                onCreate={handleCreateInDir}
                 live={true}
               />
             </div>
@@ -850,6 +865,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
                 onKill={onKill}
                 onDelete={onDelete}
                 onRename={onRename}
+                onCreate={handleCreateInDir}
                 live={false}
               />
             </div>
@@ -866,7 +882,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
             <option value="default">Default</option>
             <option value="plan">Plan Only</option>
           </select>
-          <button id="new-session" onClick={() => onCreate(perm)}>+ New</button>
+          <button id="new-session" onClick={handleBrowse} title="Browse for project folder">+ New...</button>
         </div>
         <button id="settings-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
           &#9881; Settings
