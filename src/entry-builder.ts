@@ -138,6 +138,7 @@ export function applyEvent(entries: ChatEntry[], event: SessionEvent): boolean {
     case "stateChange":
     case "warn":
     case "nameChanged":
+    case "popoutChanged":
       return false;
   }
 }

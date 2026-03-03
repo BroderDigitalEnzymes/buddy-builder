@@ -1,15 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { spawn as spawnChild } from "child_process";
-import {
-  registerHandlers,
-  createPushProxy,
-  type Handlers,
-  type Pushers,
-} from "../ipc.js";
+import { registerHandlers, type Handlers } from "../ipc.js";
 import { createSessionManager, type SessionManager } from "./manager.js";
 import { loadConfig, saveConfig } from "./config.js";
+import { register, unregister, dispatch, findPopout, closeAllPopouts } from "./windows.js";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -23,6 +19,11 @@ const INITIAL_HEIGHT = 740;
 const MIN_WIDTH = 600;
 const MIN_HEIGHT = 400;
 
+const POPOUT_WIDTH = 800;
+const POPOUT_HEIGHT = 600;
+const POPOUT_MIN_WIDTH = 500;
+const POPOUT_MIN_HEIGHT = 350;
+
 // ─── Globals ─────────────────────────────────────────────────────
 
 // Suppress GUI error dialogs — log to stderr instead
@@ -32,19 +33,24 @@ dialog.showErrorBox = (title: string, content: string) => {
 
 let mainWindow: BrowserWindow | null = null;
 let manager: SessionManager | null = null;
-let push: Pushers | null = null;
 
-// ─── Window ─────────────────────────────────────────────────────
+// ─── Shared window factory ──────────────────────────────────────
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: INITIAL_WIDTH,
-    height: INITIAL_HEIGHT,
-    minWidth: MIN_WIDTH,
-    minHeight: MIN_HEIGHT,
+function createWindowBase(opts: {
+  width: number;
+  height: number;
+  minWidth?: number;
+  minHeight?: number;
+  title?: string;
+}): BrowserWindow {
+  return new BrowserWindow({
+    width: opts.width,
+    height: opts.height,
+    minWidth: opts.minWidth,
+    minHeight: opts.minHeight,
     frame: false,
     backgroundColor: BG_COLOR,
-    title: "Buddy Builder",
+    title: opts.title ?? "Buddy Builder",
     icon: path.join(__dirname, "assets", "icon-256.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -52,17 +58,61 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+}
+
+// ─── Main window ─────────────────────────────────────────────────
+
+function createWindow(): void {
+  mainWindow = createWindowBase({
+    width: INITIAL_WIDTH,
+    height: INITIAL_HEIGHT,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
+  });
 
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+  register({ kind: "main", win: mainWindow });
 
-  push = createPushProxy(
-    (channel, data) => mainWindow?.webContents.send(channel, data),
-  );
-
-  mainWindow.on("closed", () => { mainWindow = null; push = null; });
+  mainWindow.on("closed", () => {
+    unregister(mainWindow!);
+    mainWindow = null;
+    closeAllPopouts();
+  });
 
   if (TEST_MODE) runTestMode();
 }
+
+// ─── Pop-out windows ─────────────────────────────────────────────
+
+function createPopoutWindow(sessionId: string): void {
+  const existing = findPopout(sessionId);
+  if (existing) { existing.focus(); return; }
+
+  const win = createWindowBase({
+    width: POPOUT_WIDTH,
+    height: POPOUT_HEIGHT,
+    minWidth: POPOUT_MIN_WIDTH,
+    minHeight: POPOUT_MIN_HEIGHT,
+    title: "Session",
+  });
+
+  win.loadFile(path.join(__dirname, "renderer", "index.html"), {
+    hash: `popout=${sessionId}`,
+  });
+
+  register({ kind: "popout", win, sessionId });
+  dispatch({ kind: "popoutChanged", sessionId, poppedOut: true });
+
+  win.on("closed", () => {
+    unregister(win);
+    // Only notify main window if it's still alive (not during app shutdown)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      dispatch({ kind: "popoutChanged", sessionId, poppedOut: false });
+    }
+  });
+}
+
+// ─── Test mode ───────────────────────────────────────────────────
 
 function runTestMode(): void {
   mainWindow!.webContents.on("did-finish-load", async () => {
@@ -114,27 +164,45 @@ function setupIpc(mgr: SessionManager): void {
     getConfig:         () => loadConfig(),
     setConfig:         (config) => { saveConfig(config); },
     pickFolder: async () => {
-      if (!mainWindow) return null;
-      const result = await dialog.showOpenDialog(mainWindow, {
+      const win = BrowserWindow.getFocusedWindow();
+      if (!win) return null;
+      const result = await dialog.showOpenDialog(win, {
         properties: ["openDirectory"],
         title: "Choose project directory",
       });
       return result.canceled ? null : result.filePaths[0] ?? null;
     },
     takeScreenshot: async (opts) => {
-      if (!mainWindow) throw new Error("No window");
-      const image = await mainWindow.webContents.capturePage();
+      const win = BrowserWindow.getFocusedWindow();
+      if (!win) throw new Error("No window");
+      const image = await win.webContents.capturePage();
       const name = opts?.filename ?? `buddy-${Date.now()}.png`;
       const p = path.join(process.env.TEMP ?? "/tmp", name);
       fs.writeFileSync(p, image.toPNG());
       return p;
     },
-    winMinimize:    () => { mainWindow?.minimize(); },
-    winMaximize:    () => {
-      if (mainWindow?.isMaximized()) mainWindow.unmaximize();
-      else mainWindow?.maximize();
+    popOutSession:  ({ sessionId }) => { createPopoutWindow(sessionId); },
+    popInSession:   ({ sessionId }) => {
+      const win = findPopout(sessionId);
+      // Defer close so the IPC invoke response can be sent before the window is destroyed
+      if (win && !win.isDestroyed()) setImmediate(() => win.close());
     },
-    winClose:       () => { mainWindow?.close(); },
+    focusPopout:    ({ sessionId }) => {
+      const win = findPopout(sessionId);
+      if (win && !win.isDestroyed()) { win.focus(); return true; }
+      return false;
+    },
+    winMinimize:    () => { BrowserWindow.getFocusedWindow()?.minimize(); },
+    winMaximize:    () => {
+      const w = BrowserWindow.getFocusedWindow();
+      if (w?.isMaximized()) w.unmaximize();
+      else w?.maximize();
+    },
+    winClose:       () => {
+      const w = BrowserWindow.getFocusedWindow();
+      // Defer close so the IPC invoke response can be sent before the window is destroyed
+      if (w) setImmediate(() => w.close());
+    },
   };
 
   registerHandlers(
@@ -147,7 +215,7 @@ function setupIpc(mgr: SessionManager): void {
 
 app.whenReady().then(() => {
   const config = loadConfig();
-  manager = createSessionManager((event) => push?.sessionEvent(event), config.claudePath);
+  manager = createSessionManager(dispatch, config.claudePath);
   setupIpc(manager);
   createWindow();
 

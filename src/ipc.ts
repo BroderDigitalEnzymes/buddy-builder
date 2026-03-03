@@ -32,7 +32,8 @@ export type SessionEvent =
   | { kind: "warn"; sessionId: string; message: string }
   | { kind: "error"; sessionId: string; message: string }
   | { kind: "exit"; sessionId: string; code: number | null }
-  | { kind: "nameChanged"; sessionId: string; name: string };
+  | { kind: "nameChanged"; sessionId: string; name: string }
+  | { kind: "popoutChanged"; sessionId: string; poppedOut: boolean };
 
 export type SessionInfo = {
   readonly id: string;
@@ -122,6 +123,9 @@ export type InvokeContract = {
   setConfig:         { in: AppConfig; out: void };
   pickFolder:        { in: undefined; out: string | null };
   takeScreenshot:    { in: { filename?: string } | undefined; out: string };
+  popOutSession:     { in: { sessionId: string }; out: void };
+  popInSession:      { in: { sessionId: string }; out: void };
+  focusPopout:       { in: { sessionId: string }; out: boolean };
   winMinimize:       { in: undefined; out: void };
   winMaximize:       { in: undefined; out: void };
   winClose:          { in: undefined; out: void };
@@ -183,6 +187,7 @@ export const INVOKE_CHANNELS = [
   "listSessions", "updatePolicy", "getPolicy",
   "renameSession", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
   "getConfig", "setConfig", "pickFolder", "takeScreenshot",
+  "popOutSession", "popInSession", "focusPopout",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];
 

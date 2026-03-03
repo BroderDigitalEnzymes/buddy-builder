@@ -3,7 +3,7 @@ import { marked } from "marked";
 import { pickFolder, type SessionData } from "./store.js";
 import type { ChatEntry, ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
 import { WindowControls } from "./window-controls.js";
-import { ToolViewTabs, getMatchingViews } from "./tool-views.js";
+import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
 
 // Configure marked for safe, synchronous rendering
 marked.setOptions({ async: false, breaks: true });
@@ -356,12 +356,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
 // ─── Title bar (drag region + window controls) ───────────────────
 
-export const TitleBar = memo(function TitleBar() {
+export const TitleBar = memo(function TitleBar({ compact, sessionName }: {
+  compact?: boolean;
+  sessionName?: string;
+}) {
   return (
     <div id="title-bar">
       <div id="title-bar-left">
         <img id="title-bar-icon" src="../assets/icon-32.png" alt="" />
-        <span id="title-bar-label">Buddy Builder</span>
+        <span id="title-bar-label">{compact ? sessionName ?? "Session" : "Buddy Builder"}</span>
       </div>
       <WindowControls />
     </div>
@@ -433,6 +436,7 @@ function EditableSessionLabel({ name, onRename }: EditableSessionLabelProps) {
 type SidebarProps = {
   sessions: SessionData[];
   activeId: string | null;
+  poppedOutIds?: Set<string>;
   onSwitch: (id: string) => void;
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
@@ -544,6 +548,7 @@ type SessionItemProps = {
   session: SessionData;
   depth: number;
   activeId: string | null;
+  poppedOutIds?: Set<string>;
   live: boolean;
   onSwitch: (id: string) => void;
   onKill: (id: string) => void;
@@ -551,17 +556,20 @@ type SessionItemProps = {
   onRename: (id: string, name: string) => void;
 };
 
-function SessionItem({ session: s, depth, activeId, live, onSwitch, onKill, onDelete, onRename }: SessionItemProps) {
+function SessionItem({ session: s, depth, activeId, poppedOutIds, live, onSwitch, onKill, onDelete, onRename }: SessionItemProps) {
   const isDead = s.state === "dead";
+  const isPoppedOut = poppedOutIds?.has(s.id) ?? false;
   return (
     <button
-      className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""}`}
+      className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""} ${isPoppedOut ? "popped-out" : ""}`}
       style={{ paddingLeft: `${12 + depth * 14}px` }}
       onClick={() => onSwitch(s.id)}
+      title={isPoppedOut ? "Focus pop-out window" : undefined}
     >
       <span className="dir-tree-toggle-spacer" />
       <span className={`session-dot state-${s.state}`} />
       <EditableSessionLabel name={s.name} onRename={(name) => onRename(s.id, name)} />
+      {isPoppedOut && <span className="popout-indicator" title="Popped out">&#8599;</span>}
       {live ? (
         <span className="session-kill" title="Terminate session" onClick={(e) => { e.stopPropagation(); onKill(s.id); }}>&#9632;</span>
       ) : (
@@ -577,6 +585,7 @@ type DirTreeNodeViewProps = {
   node: DirTreeNode;
   depth: number;
   activeId: string | null;
+  poppedOutIds?: Set<string>;
   expandedPaths: Set<string>;
   isSearching: boolean;
   onToggle: (path: string) => void;
@@ -589,7 +598,7 @@ type DirTreeNodeViewProps = {
 };
 
 function DirTreeNodeView({
-  node, depth, activeId, expandedPaths, isSearching,
+  node, depth, activeId, poppedOutIds, expandedPaths, isSearching,
   onToggle, onSwitch, onKill, onDelete, onRename, onCreate, live,
 }: DirTreeNodeViewProps) {
   const defaultOpen = true;
@@ -622,6 +631,7 @@ function DirTreeNodeView({
               session={s}
               depth={depth + 1}
               activeId={activeId}
+              poppedOutIds={poppedOutIds}
               live={live}
               onSwitch={onSwitch}
               onKill={onKill}
@@ -635,6 +645,7 @@ function DirTreeNodeView({
               node={child}
               depth={depth + 1}
               activeId={activeId}
+              poppedOutIds={poppedOutIds}
               expandedPaths={expandedPaths}
               isSearching={isSearching}
               onToggle={onToggle}
@@ -657,6 +668,7 @@ function DirTreeNodeView({
 type DirTreeListProps = {
   tree: DirTree;
   activeId: string | null;
+  poppedOutIds?: Set<string>;
   expandedPaths: Set<string>;
   isSearching: boolean;
   onToggle: (path: string) => void;
@@ -669,7 +681,7 @@ type DirTreeListProps = {
 };
 
 function DirTreeList({
-  tree, activeId, expandedPaths, isSearching,
+  tree, activeId, poppedOutIds, expandedPaths, isSearching,
   onToggle, onSwitch, onKill, onDelete, onRename, onCreate, live,
 }: DirTreeListProps) {
   if (tree.roots.length === 0 && tree.rootSessions.length === 0 && tree.unknown.length === 0) {
@@ -693,6 +705,7 @@ function DirTreeList({
           node={node}
           depth={0}
           activeId={activeId}
+          poppedOutIds={poppedOutIds}
           expandedPaths={expandedPaths}
           isSearching={isSearching}
           onToggle={onToggle}
@@ -710,6 +723,7 @@ function DirTreeList({
           session={s}
           depth={0}
           activeId={activeId}
+          poppedOutIds={poppedOutIds}
           live={live}
           onSwitch={onSwitch}
           onKill={onKill}
@@ -734,6 +748,7 @@ function DirTreeList({
               session={s}
               depth={1}
               activeId={activeId}
+              poppedOutIds={poppedOutIds}
               live={live}
               onSwitch={onSwitch}
               onKill={onKill}
@@ -784,7 +799,7 @@ function useDragBar(containerRef: React.RefObject<HTMLDivElement | null>, initia
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
-export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onKill, onDelete, onRename, onCreate }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds, onSwitch, onKill, onDelete, onRename, onCreate }: SidebarProps) {
   const [perm, setPerm] = useState<PermissionMode>("default");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -839,6 +854,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
               <DirTreeList
                 tree={liveTree}
                 activeId={activeId}
+                poppedOutIds={poppedOutIds}
                 expandedPaths={liveExpanded}
                 isSearching={isSearching}
                 onToggle={toggleLive}
@@ -858,6 +874,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, onSwitch, onK
               <DirTreeList
                 tree={histTree}
                 activeId={activeId}
+                poppedOutIds={poppedOutIds}
                 expandedPaths={histExpanded}
                 isSearching={isSearching}
                 onToggle={toggleHist}
@@ -914,9 +931,11 @@ type ChatHeaderProps = {
   session: SessionData | null;
   onSetPreset: (p: PolicyPreset) => void;
   onToggleFavorite: () => void;
+  onPopOut?: (id: string) => void;
+  onPopIn?: () => void;
 };
 
-export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite }: ChatHeaderProps) {
+export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onPopOut, onPopIn }: ChatHeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -952,6 +971,28 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
         </div>
       </div>
       <div className="chat-header-right">
+        {onPopOut && session && (
+          <button
+            className="chat-header-icon-btn popout-btn"
+            title="Pop out session"
+            onClick={() => onPopOut(session.id)}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M9 2h5v5" /><path d="M14 2L8 8" /><path d="M12 9v5H2V4h5" />
+            </svg>
+          </button>
+        )}
+        {onPopIn && (
+          <button
+            className="chat-header-icon-btn popout-btn"
+            title="Pop back into main window"
+            onClick={onPopIn}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M7 9l-5-5" /><path d="M2 4v5h5" /><path d="M14 2v12H2" />
+            </svg>
+          </button>
+        )}
         <div className="chat-header-dropdown-wrap" ref={dropdownRef}>
           <button
             className="chat-header-icon-btn"

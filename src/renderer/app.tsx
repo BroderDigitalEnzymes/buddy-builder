@@ -14,6 +14,10 @@ import {
   resumeInTerminal,
   toggleFavorite,
   loadPersistedSessions,
+  popOutSession,
+  popInSession,
+  focusPopout,
+  IS_POPOUT,
 } from "./store.js";
 import {
   TitleBar,
@@ -27,7 +31,7 @@ import type { ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
 function App() {
   // Subscribe to all store changes via version counter
   useStoreVersion();
-  const { sessions, activeId } = getState();
+  const { sessions, activeId, poppedOutIds } = getState();
 
   // Load persisted sessions on mount
   useEffect(() => {
@@ -40,7 +44,10 @@ function App() {
   const canSend = !!activeSession && activeSession.state === "idle";
   const showResume = !!activeSession && activeSession.state === "dead" && !!activeSession.claudeSessionId;
 
-  const handleSwitch = useCallback((id: string) => switchSession(id), []);
+  const handleSwitch = useCallback((id: string) => {
+    if (poppedOutIds.has(id)) { focusPopout(id); return; }
+    switchSession(id);
+  }, [poppedOutIds]);
   const handleKill = useCallback((id: string) => killSession(id), []);
   const handleDelete = useCallback((id: string) => deleteSession(id), []);
   const handleRename = useCallback((id: string, name: string) => renameSession(id, name), []);
@@ -56,32 +63,50 @@ function App() {
   const handleResumeTerminal = useCallback(() => {
     if (activeId) resumeInTerminal(activeId);
   }, [activeId]);
+  const handlePopOut = useCallback((id: string) => popOutSession(id), []);
+  const handlePopIn = useCallback(() => {
+    if (activeId) popInSession(activeId);
+  }, [activeId]);
+
+  // Chat area — defined once, rendered in both layouts
+  const chatArea = (
+    <div id="main-area">
+      <ChatHeader
+        session={activeSession}
+        onSetPreset={handlePreset}
+        onToggleFavorite={handleToggleFavorite}
+        onPopOut={IS_POPOUT ? undefined : handlePopOut}
+        onPopIn={IS_POPOUT ? handlePopIn : undefined}
+      />
+      <MessageList entries={entries} isBusy={activeSession?.state === "busy"} />
+      <InputBar
+        disabled={!canSend}
+        showResume={showResume}
+        onSend={handleSend}
+        onResume={handleResume}
+        onResumeTerminal={handleResumeTerminal}
+      />
+    </div>
+  );
 
   return (
     <>
-      <TitleBar />
-      <div id="app-layout">
-        <Sidebar
-          sessions={sessionList}
-          activeId={activeId}
-          onSwitch={handleSwitch}
-          onKill={handleKill}
-          onDelete={handleDelete}
-          onRename={handleRename}
-          onCreate={handleCreate}
-        />
-        <div id="main-area">
-          <ChatHeader session={activeSession} onSetPreset={handlePreset} onToggleFavorite={handleToggleFavorite} />
-          <MessageList entries={entries} isBusy={activeSession?.state === "busy"} />
-          <InputBar
-            disabled={!canSend}
-            showResume={showResume}
-            onSend={handleSend}
-            onResume={handleResume}
-            onResumeTerminal={handleResumeTerminal}
+      <TitleBar compact={IS_POPOUT} sessionName={IS_POPOUT ? activeSession?.name : undefined} />
+      {IS_POPOUT ? chatArea : (
+        <div id="app-layout">
+          <Sidebar
+            sessions={sessionList}
+            activeId={activeId}
+            poppedOutIds={poppedOutIds}
+            onSwitch={handleSwitch}
+            onKill={handleKill}
+            onDelete={handleDelete}
+            onRename={handleRename}
+            onCreate={handleCreate}
           />
+          {chatArea}
         </div>
-      </div>
+      )}
     </>
   );
 }

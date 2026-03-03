@@ -343,6 +343,20 @@ body {
   opacity: 0.6;
 }
 
+/* Popped-out session indicator */
+.session-item.popped-out {
+  opacity: 0.55;
+}
+.session-item.popped-out:hover {
+  opacity: 0.75;
+}
+.popout-indicator {
+  font-size: 11px;
+  color: var(--accent);
+  margin-left: -4px;
+  flex-shrink: 0;
+}
+
 /* ─── Directory tree ─── */
 
 .dir-tree-prefix {
@@ -517,6 +531,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 /* ═══ Chat header (Slack-style) ═════════════════════════════════ */
@@ -609,6 +624,10 @@ body {
 .chat-header-icon-btn:hover {
   background: var(--hover-bg);
   border-color: var(--border-strong);
+}
+
+.popout-btn svg {
+  display: block;
 }
 
 .policy-icon { font-size: 15px; }
@@ -1222,6 +1241,283 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.tool-view-collapse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tool-view-collapse:hover {
+  color: var(--text-secondary);
+  background: var(--hover-bg);
+}
+
+.tool-view-collapse-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+/* ─── Bash command view ─── */
+
+.bash-view {
+  animation: fadeIn 0.15s ease;
+  padding: 10px 14px;
+}
+
+.bash-desc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.bash-ok  { color: var(--success); font-weight: 700; }
+.bash-err { color: var(--error);   font-weight: 700; }
+
+/* ── Terminal block ── */
+.bash-terminal {
+  background: #0d1117;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.bash-terminal-err {
+  border-color: rgba(224, 30, 90, 0.25);
+}
+
+.bash-command {
+  margin: 0;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: transparent;
+}
+.bash-prompt {
+  color: var(--success);
+  user-select: none;
+}
+
+/* ── Output ── */
+.bash-output-wrap {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bash-output-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  list-style: none;
+  user-select: none;
+  font-family: var(--font-mono);
+}
+.bash-output-toggle::-webkit-details-marker { display: none; }
+.bash-output-toggle:hover { color: var(--text-secondary); }
+
+.bash-output-chevron {
+  font-size: 9px;
+  width: 10px;
+  text-align: center;
+}
+
+.bash-output-preview {
+  opacity: 0.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bash-output {
+  margin: 0;
+  padding: 0 12px 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+  background: transparent;
+}
+
+.bash-stderr-wrap {
+  border-top: 1px solid rgba(224, 30, 90, 0.15);
+}
+.bash-stderr {
+  margin: 0;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--error);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  background: rgba(224, 30, 90, 0.04);
+}
+
+.bash-exit-badge {
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--error);
+  border-top: 1px solid rgba(224, 30, 90, 0.15);
+  background: rgba(224, 30, 90, 0.06);
+}
+
+/* ─── TodoWrite / Task views ─── */
+
+.todo-view, .task-view {
+  animation: fadeIn 0.15s ease;
+  padding: 10px 14px;
+}
+
+.todo-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.todo-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-4);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.todo-progress-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.todo-progress-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: var(--accent-bg);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.todo-active-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.todo-check {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.todo-completed .todo-check { color: var(--success); }
+.todo-in_progress .todo-check { color: var(--accent); }
+.todo-pending .todo-check { color: var(--text-muted); }
+
+.todo-completed .todo-content {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+
+.todo-in_progress .todo-content {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Task create/update views */
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.task-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.task-subject {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.task-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.task-completed .task-status-badge { color: var(--success); background: rgba(43, 172, 118, 0.12); }
+.task-in_progress .task-status-badge { color: var(--accent); background: var(--accent-bg); }
+.task-deleted .task-status-badge { color: var(--error); background: rgba(224, 30, 90, 0.08); }
 
 /* ─── AskUserQuestion ─── */
 

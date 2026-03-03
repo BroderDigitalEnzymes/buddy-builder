@@ -13,6 +13,12 @@ import { applyEvent } from "../entry-builder.js";
 
 export type { ChatEntry } from "../ipc.js";
 
+// ─── Window mode detection (same code, parameterized by URL hash) ─
+
+const hashParams = new URLSearchParams(window.location.hash.slice(1));
+export const POPOUT_SESSION_ID: string | null = hashParams.get("popout");
+export const IS_POPOUT = !!POPOUT_SESSION_ID;
+
 export type SessionData = {
   id: string;
   name: string;
@@ -31,6 +37,7 @@ export type SessionData = {
 type StoreState = {
   sessions: Map<string, SessionData>;
   activeId: string | null;
+  poppedOutIds: Set<string>;
   counter: number;
   version: number;
 };
@@ -38,6 +45,7 @@ type StoreState = {
 const state: StoreState = {
   sessions: new Map(),
   activeId: null,
+  poppedOutIds: new Set(),
   counter: 0,
   version: 0,
 };
@@ -77,6 +85,7 @@ export function getState(): StoreState {
 const api = (): ClientApi => (window as any).claude;
 
 export async function switchSession(id: string): Promise<void> {
+  if (IS_POPOUT && id !== POPOUT_SESSION_ID) return; // locked to one session
   state.activeId = id;
   // Lazy-load entries if not yet loaded
   const data = state.sessions.get(id);
@@ -108,6 +117,11 @@ export async function loadPersistedSessions(): Promise<void> {
         favorite: false,
         entries: [],
       });
+    }
+    // In popout mode, auto-switch to the locked session
+    if (IS_POPOUT && POPOUT_SESSION_ID) {
+      await switchSession(POPOUT_SESSION_ID);
+      return; // switchSession calls emit
     }
     emit();
   } catch (err) {
@@ -272,9 +286,27 @@ function handleEvent(event: SessionEvent): void {
     case "nameChanged":
       data.name = event.name;
       break;
+    case "popoutChanged":
+      if (event.poppedOut) state.poppedOutIds.add(event.sessionId);
+      else state.poppedOutIds.delete(event.sessionId);
+      break;
   }
 
   emit();
+}
+
+// ─── Pop-out actions ────────────────────────────────────────────
+
+export async function popOutSession(id: string): Promise<void> {
+  await api().popOutSession({ sessionId: id });
+}
+
+export async function popInSession(id: string): Promise<void> {
+  await api().popInSession({ sessionId: id });
+}
+
+export async function focusPopout(id: string): Promise<boolean> {
+  return await api().focusPopout({ sessionId: id });
 }
 
 // Wire up the IPC event listener
