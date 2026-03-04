@@ -7,6 +7,7 @@ import {
   createSession,
   sendMessage,
   setPreset,
+  interruptSession,
   killSession,
   deleteSession,
   renameSession,
@@ -25,6 +26,7 @@ import {
   ChatHeader,
   MessageList,
   InputBar,
+  RateLimitBanner,
 } from "./components.js";
 import type { ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
 
@@ -41,7 +43,7 @@ function App() {
   const activeSession = activeId ? sessions.get(activeId) ?? null : null;
   const sessionList = [...sessions.values()];
   const entries = activeSession?.entries ?? [];
-  const canSend = !!activeSession && activeSession.state === "idle";
+  const canSend = !!activeSession && activeSession.state !== "dead";
   const showResume = !!activeSession && activeSession.state === "dead" && !!activeSession.claudeSessionId;
 
   const handleSwitch = useCallback((id: string) => {
@@ -53,10 +55,13 @@ function App() {
   const handleRename = useCallback((id: string, name: string) => renameSession(id, name), []);
   const handleCreate = useCallback((perm: PermissionMode, cwd?: string) => createSession(perm, cwd), []);
   const handlePreset = useCallback((p: PolicyPreset) => setPreset(p), []);
-  const handleToggleFavorite = useCallback(() => {
-    if (activeId) toggleFavorite(activeId);
-  }, [activeId]);
+  const handleToggleFavorite = useCallback((id: string) => {
+    toggleFavorite(id);
+  }, []);
   const handleSend = useCallback((text: string, images?: ImageData[]) => sendMessage(text, images), []);
+  const handleInterrupt = useCallback(() => {
+    if (activeId) interruptSession(activeId);
+  }, [activeId]);
   const handleResume = useCallback(() => {
     if (activeId) resumeSession(activeId);
   }, [activeId]);
@@ -78,11 +83,15 @@ function App() {
         onPopOut={IS_POPOUT ? undefined : handlePopOut}
         onPopIn={IS_POPOUT ? handlePopIn : undefined}
       />
+      <RateLimitBanner rateLimit={activeSession?.rateLimit ?? null} />
       <MessageList entries={entries} isBusy={activeSession?.state === "busy"} />
       <InputBar
         disabled={!canSend}
+        isBusy={activeSession?.state === "busy"}
+        queueCount={activeSession?.messageQueue.length ?? 0}
         showResume={showResume}
         onSend={handleSend}
+        onInterrupt={handleInterrupt}
         onResume={handleResume}
         onResumeTerminal={handleResumeTerminal}
       />
@@ -103,6 +112,7 @@ function App() {
             onDelete={handleDelete}
             onRename={handleRename}
             onCreate={handleCreate}
+            onToggleFavorite={handleToggleFavorite}
           />
           {chatArea}
         </div>
@@ -112,3 +122,6 @@ function App() {
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+// Expose store actions for e2e tests
+(window as any).__buddyStore = { createSession, switchSession, sendMessage, interruptSession, getState };

@@ -37,6 +37,8 @@ function parseJsonMessage(json: any): OutputMessage | null {
       return safeParse(RateLimitEventSchema, json);
     case "user":
       return safeParse(UserEchoSchema, json);
+    case "control_response":
+      return null; // ACK for control_request — silently ignore
     default:
       return null;
   }

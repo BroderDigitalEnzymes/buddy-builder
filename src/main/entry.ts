@@ -144,11 +144,13 @@ function setupIpc(mgr: SessionManager): void {
     createSession:     (opts) => mgr.create(opts),
     sendMessage:       ({ sessionId, text, images }) => { mgr.send(sessionId, text, images); },
     answerQuestion:    ({ sessionId, toolUseId, answer }) => { mgr.answerQuestion(sessionId, toolUseId, answer); },
+    interruptSession:  ({ sessionId }) => { mgr.interrupt(sessionId); },
     killSession:       ({ sessionId }) => { mgr.kill(sessionId); },
     listSessions:      () => mgr.list(),
     updatePolicy:      ({ sessionId, policy }) => { mgr.updatePolicy(sessionId, policy); },
     getPolicy:         ({ sessionId }) => mgr.getPolicy(sessionId),
     renameSession:     ({ sessionId, name }) => { mgr.rename(sessionId, name); },
+    setFavorite:       ({ sessionId, favorite }) => { mgr.setFavorite(sessionId, favorite); },
     resumeSession:     ({ sessionId }) => mgr.resume(sessionId),
     resumeInTerminal:  ({ sessionId }) => {
       const { claudeSessionId, cwd } = mgr.getResumeInfo(sessionId);

@@ -19,7 +19,7 @@ async function main() {
   session.on("toolEnd", (ev) =>
     console.log(`[tool:end] ${ev.toolName}`));
   session.on("result", (r) =>
-    console.log(`[result] "${r.result.slice(0, 60)}" cost=$${r.total_cost_usd.toFixed(4)} turns=${r.num_turns}`));
+    console.log(`[result] "${(r.result ?? "").slice(0, 60)}" cost=$${r.total_cost_usd.toFixed(4)} turns=${r.num_turns}`));
   session.on("stop", (ev) =>
     console.log(`[stop] hookActive=${ev.stopHookActive}`));
   session.on("error", (err) =>

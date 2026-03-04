@@ -1,8 +1,42 @@
-import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import { marked } from "marked";
 import type { SessionData } from "./store.js";
 import type { ChatEntry, ImageData, PolicyPreset } from "../ipc.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
+
+// ─── Helpers: formatting ────────────────────────────────────────
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+// ─── Rate Limit Banner ──────────────────────────────────────────
+
+export function RateLimitBanner({ rateLimit }: { rateLimit: { resetsAt: number; status: string } | null }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!rateLimit) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [rateLimit]);
+
+  if (!rateLimit || now >= rateLimit.resetsAt) return null;
+
+  const remaining = Math.ceil((rateLimit.resetsAt - now) / 1000);
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+  return (
+    <div className="rate-limit-banner">
+      <span className="rate-limit-icon">{"\u23F1"}</span>
+      <span>Rate limited \u2014 resets in {timeStr}</span>
+    </div>
+  );
+}
 
 // Configure marked for safe, synchronous rendering
 marked.setOptions({ async: false, breaks: true });
@@ -370,10 +404,76 @@ const PRESET_ICONS: Record<PolicyPreset, string> = {
   "read-only": "\u{1F512}",
 };
 
+// ─── Session info popover ────────────────────────────────────────
+
+function SessionInfoButton({ session }: { session: SessionData }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const hasInfo = session.model || session.tools.length > 0 || session.mcpServers.length > 0 || session.claudeCodeVersion;
+  if (!hasInfo) return null;
+
+  return (
+    <div className="info-popover-wrap" ref={ref}>
+      <button className="chat-header-icon-btn" onClick={() => setOpen((v) => !v)} title="Session info">
+        {"\u2139\uFE0F"}
+      </button>
+      {open && (
+        <div className="info-popover">
+          {session.claudeCodeVersion && (
+            <div className="info-row">
+              <span className="info-label">Version</span>
+              <span>{session.claudeCodeVersion}</span>
+            </div>
+          )}
+          {session.model && (
+            <div className="info-row">
+              <span className="info-label">Model</span>
+              <span>{session.model}</span>
+            </div>
+          )}
+          {session.tools.length > 0 && (
+            <>
+              <div className="info-row">
+                <span className="info-label">Tools ({session.tools.length})</span>
+              </div>
+              <div className="info-tool-list">
+                {session.tools.map((t) => <span key={t} className="info-tool-tag">{t}</span>)}
+              </div>
+            </>
+          )}
+          {session.mcpServers.length > 0 && (
+            <>
+              <div className="info-row">
+                <span className="info-label">MCP Servers</span>
+              </div>
+              {session.mcpServers.map((s) => (
+                <div key={s.name} className="info-mcp-row">
+                  <span>{s.name}</span>
+                  <span className={`info-mcp-status info-mcp-${s.status}`}>{s.status}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type ChatHeaderProps = {
   session: SessionData | null;
   onSetPreset: (p: PolicyPreset) => void;
-  onToggleFavorite: () => void;
+  onToggleFavorite: (id: string) => void;
   onPopOut?: (id: string) => void;
   onPopIn?: () => void;
 };
@@ -403,7 +503,7 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
         <button
           className={`chat-header-star ${session.favorite ? "starred" : ""}`}
           title={session.favorite ? "Remove from favorites" : "Add to favorites"}
-          onClick={onToggleFavorite}
+          onClick={() => onToggleFavorite(session.id)}
         >
           {session.favorite ? "\u2605" : "\u2606"}
         </button>
@@ -411,8 +511,16 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
           <span className="chat-header-name">{session.name}</span>
           <span className="chat-header-project">{session.projectName}</span>
         </div>
+        {session.model && <span className="model-badge">{session.model}</span>}
       </div>
       <div className="chat-header-right">
+        {session.totalInputTokens > 0 && (
+          <span className="token-counter">
+            {formatTokens(session.totalInputTokens)} in / {formatTokens(session.totalOutputTokens)} out
+            {session.totalCost > 0 && <>{" \u00B7 $"}{session.totalCost.toFixed(3)}</>}
+          </span>
+        )}
+        <SessionInfoButton session={session} />
         {onPopOut && session && (
           <button
             className="chat-header-icon-btn popout-btn"
@@ -488,16 +596,20 @@ function fileToImageData(file: File): Promise<ImageData | null> {
 
 type InputBarProps = {
   disabled: boolean;
+  isBusy: boolean;
+  queueCount: number;
   showResume: boolean;
   onSend: (text: string, images?: ImageData[]) => void;
+  onInterrupt: () => void;
   onResume: () => void;
   onResumeTerminal: () => void;
 };
 
-export const InputBar = memo(function InputBar({ disabled, showResume, onSend, onResume, onResumeTerminal }: InputBarProps) {
+export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, showResume, onSend, onInterrupt, onResume, onResumeTerminal }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const prevDisabled = useRef(disabled);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
+  const lastEscapeRef = useRef(0);
+  const [escapeHint, setEscapeHint] = useState(false);
 
   const handleSend = useCallback(() => {
     const el = ref.current;
@@ -511,19 +623,33 @@ export const InputBar = memo(function InputBar({ disabled, showResume, onSend, o
     requestAnimationFrame(() => el.focus());
   }, [onSend, pendingImages]);
 
+  // Auto-focus on mount
   useEffect(() => {
-    if (prevDisabled.current && !disabled) {
-      ref.current?.focus();
-    }
-    prevDisabled.current = disabled;
+    if (!disabled) ref.current?.focus();
   }, [disabled]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && isBusy) {
+      e.preventDefault();
+      const now = Date.now();
+      if (now - lastEscapeRef.current < 400) {
+        // Double-Escape → interrupt
+        lastEscapeRef.current = 0;
+        setEscapeHint(false);
+        onInterrupt();
+      } else {
+        // First Escape → show hint
+        lastEscapeRef.current = now;
+        setEscapeHint(true);
+        setTimeout(() => setEscapeHint(false), 1500);
+      }
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
-  }, [handleSend]);
+  }, [handleSend, isBusy, onInterrupt]);
 
   const handleInput = useCallback(() => {
     const el = ref.current;
@@ -589,7 +715,7 @@ export const InputBar = memo(function InputBar({ disabled, showResume, onSend, o
         <textarea
           ref={ref}
           id="input"
-          placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : "Message Claude..."}
+          placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : isBusy ? "Type to queue a message..." : "Message Claude..."}
           rows={1}
           disabled={disabled}
           onKeyDown={handleKeyDown}
@@ -597,9 +723,11 @@ export const InputBar = memo(function InputBar({ disabled, showResume, onSend, o
           onPaste={handlePaste}
         />
         <button id="send" disabled={disabled} onClick={handleSend}>
-          Send
+          {queueCount > 0 ? `Send +${queueCount}` : "Send"}
         </button>
       </div>
+      {escapeHint && <div className="escape-hint">Press Esc again to stop</div>}
+      {isBusy && queueCount > 0 && <div className="queue-hint">{queueCount} queued</div>}
     </div>
   );
 });

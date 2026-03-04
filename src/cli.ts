@@ -17,6 +17,7 @@ ${cyan("Commands:")}
   .state     Show session state
   .cost      Show total cost
   .policy    Toggle blocking Write/Edit tools
+  .stop      Interrupt current turn (soft)
   .kill      Kill the session
   .quit      Exit
   .help      This message
@@ -39,7 +40,6 @@ async function main(): Promise<void> {
 
   let blockWrites = false;
 
-  // ── Tool policy ──
   session.setToolPolicy((toolName, _input) => {
     if (blockWrites && (toolName === "Write" || toolName === "Edit")) {
       return { action: "block", reason: "Write/Edit blocked by CLI policy" };
@@ -47,7 +47,6 @@ async function main(): Promise<void> {
     return { action: "allow" };
   });
 
-  // ── Events ──
   session.on("ready", (init) => {
     console.log(green(`Ready`) + dim(` session=${init.session_id.slice(0, 8)} model=${init.model}`));
   });
@@ -76,6 +75,7 @@ async function main(): Promise<void> {
     console.log(
       dim(`─── $${result.total_cost_usd.toFixed(4)} · ${result.num_turns} turns · ${(result.duration_ms / 1000).toFixed(1)}s ───`),
     );
+    rl.prompt();
   });
 
   session.on("error", (err) => {
@@ -99,14 +99,6 @@ async function main(): Promise<void> {
     prompt: "> ",
   });
 
-  function promptIfIdle(): void {
-    if (session.state === "idle" || session.state === "dead") {
-      rl.prompt();
-    }
-  }
-
-  session.on("result", promptIfIdle);
-
   rl.on("line", (input) => {
     const trimmed = input.trim();
     if (!trimmed) { rl.prompt(); return; }
@@ -117,6 +109,15 @@ async function main(): Promise<void> {
         case ".quit":
         case ".exit":
           session.dispose().then(() => process.exit(0));
+          return;
+        case ".stop":
+          if (session.state !== "busy") {
+            console.log(dim("Not busy — nothing to interrupt."));
+          } else {
+            console.log(yellow("Interrupting..."));
+            session.interrupt();
+          }
+          rl.prompt();
           return;
         case ".kill":
           session.kill();

@@ -31,6 +31,18 @@ export type SessionData = {
   favorite: boolean;
   lastActiveAt: number;
   entries: ChatEntry[];
+  // Phase 2: rate limit + token usage
+  rateLimit: { resetsAt: number; status: string } | null;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+  // Phase 3: init metadata
+  model: string | null;
+  tools: string[];
+  mcpServers: { name: string; status: string }[];
+  claudeCodeVersion: string | null;
+  // Message queue — messages sent while busy, flushed on idle
+  messageQueue: { text: string; images?: ImageData[] }[];
 };
 
 // ─── Store ───────────────────────────────────────────────────────
@@ -115,9 +127,18 @@ export async function loadPersistedSessions(): Promise<void> {
         cwd: info.cwd,
         permissionMode: "default",
         policyPreset: "no-writes",
-        favorite: false,
+        favorite: info.favorite,
         lastActiveAt: info.lastActiveAt,
         entries: [],
+        rateLimit: null,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalCost: 0,
+        model: null,
+        tools: [],
+        mcpServers: [],
+        claudeCodeVersion: null,
+        messageQueue: [],
       });
     }
     // In popout mode, auto-switch to the locked session
@@ -147,6 +168,15 @@ export async function createSession(permissionMode: PermissionMode, cwd?: string
       favorite: false,
       lastActiveAt: Date.now(),
       entries: [{ kind: "system", text: `Session created · ${permissionMode}`, ts: Date.now() }],
+      rateLimit: null,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCost: 0,
+      model: null,
+      tools: [],
+      mcpServers: [],
+      claudeCodeVersion: null,
+      messageQueue: [],
     });
     state.activeId = id;
     emit();
@@ -166,17 +196,44 @@ export async function pickFolder(): Promise<string | null> {
 export async function sendMessage(text: string, images?: ImageData[]): Promise<void> {
   if (!state.activeId) return;
   const data = state.sessions.get(state.activeId);
-  if (!data || data.state !== "idle") return;
+  if (!data || data.state === "dead") return;
 
+  // Always show the user entry immediately
   const entry: ChatEntry = { kind: "user", text, ts: Date.now() };
   if (images?.length) entry.images = images;
   data.entries.push(entry);
+
+  if (data.state === "idle") {
+    // Send immediately
+    emit();
+    try {
+      await api().sendMessage({ sessionId: state.activeId, text, images });
+    } catch (err) {
+      data.entries.push({ kind: "system", text: `Send error: ${err}`, ts: Date.now() });
+      emit();
+    }
+  } else {
+    // Queue for later — will flush when session becomes idle
+    data.messageQueue.push({ text, images });
+    state.sessions.set(state.activeId, { ...data });
+    emit();
+  }
+}
+
+/** Flush the next queued message when a session becomes idle. */
+async function flushQueue(sessionId: string): Promise<void> {
+  const data = state.sessions.get(sessionId);
+  if (!data || data.state !== "idle" || data.messageQueue.length === 0) return;
+
+  const next = data.messageQueue.shift()!;
+  state.sessions.set(sessionId, { ...data });
   emit();
 
   try {
-    await api().sendMessage({ sessionId: state.activeId, text, images });
+    await api().sendMessage({ sessionId, text: next.text, images: next.images });
   } catch (err) {
     data.entries.push({ kind: "system", text: `Send error: ${err}`, ts: Date.now() });
+    state.sessions.set(sessionId, { ...data });
     emit();
   }
 }
@@ -204,6 +261,12 @@ export async function setPreset(preset: PolicyPreset): Promise<void> {
   } catch (err) {
     console.error("Failed to update policy:", err);
   }
+}
+
+export async function interruptSession(id: string): Promise<void> {
+  try {
+    await api().interruptSession({ sessionId: id });
+  } catch { /* ignore */ }
 }
 
 export async function killSession(id: string): Promise<void> {
@@ -241,8 +304,10 @@ export async function renameSession(id: string, name: string): Promise<void> {
 export function toggleFavorite(id: string): void {
   const data = state.sessions.get(id);
   if (!data) return;
-  data.favorite = !data.favorite;
+  const newFav = !data.favorite;
+  state.sessions.set(id, { ...data, favorite: newFav });
   emit();
+  api().setFavorite({ sessionId: id, favorite: newFav }).catch(() => {});
 }
 
 export async function resumeSession(id: string): Promise<void> {
@@ -281,10 +346,28 @@ function handleEvent(event: SessionEvent): void {
   // Keep lastActiveAt fresh
   if (event.kind !== "popoutChanged") data.lastActiveAt = Date.now();
 
-  // Store-specific side effects
+  // Store-specific side effects (mutate, then replace reference for memo)
   switch (event.kind) {
+    case "ready":
+      data.model = event.model;
+      data.tools = event.tools;
+      data.mcpServers = event.mcpServers ?? [];
+      data.claudeCodeVersion = event.claudeCodeVersion ?? null;
+      if (event.cwd && !data.cwd) data.cwd = event.cwd;
+      break;
+    case "result":
+      data.totalCost = event.cost;
+      break;
+    case "rateLimit":
+      data.rateLimit = { resetsAt: event.resetsAt, status: event.status };
+      break;
+    case "usage":
+      data.totalInputTokens += event.inputTokens;
+      data.totalOutputTokens += event.outputTokens;
+      break;
     case "stateChange":
       data.state = event.to;
+      if (event.to === "idle") flushQueue(event.sessionId);
       break;
     case "exit":
       data.state = "dead";
@@ -297,6 +380,9 @@ function handleEvent(event: SessionEvent): void {
       else state.poppedOutIds.delete(event.sessionId);
       break;
   }
+
+  // Replace object reference so memo'd components re-render
+  state.sessions.set(event.sessionId, { ...data });
 
   emit();
 }

@@ -77,7 +77,7 @@ export const ResultMessageSchema = z
     type: z.literal("result"),
     subtype: z.string(),
     is_error: z.boolean(),
-    result: z.string(),
+    result: z.string().optional(),
     session_id: z.string(),
     total_cost_usd: z.number(),
     num_turns: z.number(),

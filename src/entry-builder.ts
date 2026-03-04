@@ -135,6 +135,20 @@ export function applyEvent(entries: ChatEntry[], event: SessionEvent): boolean {
       entries.push({ kind: "system", text: "Session ended.", ts: now });
       return true;
 
+    case "stop":
+      // Only show a message when a stop hook is actively processing; normal turn ends are silent.
+      if (event.stopHookActive) {
+        entries.push({ kind: "system", text: "Claude stopped (hooks processing\u2026)", ts: now });
+        return true;
+      }
+      return false;
+
+    case "notification":
+      entries.push({ kind: "system", text: event.title ? `${event.title}: ${event.body}` : event.body, ts: now });
+      return true;
+
+    case "rateLimit":
+    case "usage":
     case "stateChange":
     case "warn":
     case "nameChanged":

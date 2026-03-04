@@ -22,12 +22,18 @@ export type ChatEntry =
 // ─── Session Event (main → renderer, validated by zod in schema.ts) ─
 
 export type SessionEvent =
-  | { kind: "ready"; sessionId: string; model: string; tools: string[] }
+  | { kind: "ready"; sessionId: string; model: string; tools: string[];
+      mcpServers?: { name: string; status: string }[];
+      claudeCodeVersion?: string; cwd?: string }
   | { kind: "text"; sessionId: string; text: string; parentToolUseId?: string }
   | { kind: "toolStart"; sessionId: string; toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string }
   | { kind: "toolEnd"; sessionId: string; toolName: string; toolUseId: string; response: unknown }
   | { kind: "toolBlocked"; sessionId: string; toolName: string; reason: string; parentToolUseId?: string }
-  | { kind: "result"; sessionId: string; text: string; cost: number; turns: number; durationMs: number }
+  | { kind: "result"; sessionId: string; text?: string; cost: number; turns: number; durationMs: number; durationApiMs: number; isError: boolean }
+  | { kind: "rateLimit"; sessionId: string; resetsAt: number; status: string }
+  | { kind: "usage"; sessionId: string; inputTokens: number; outputTokens: number }
+  | { kind: "stop"; sessionId: string; stopHookActive: boolean }
+  | { kind: "notification"; sessionId: string; title?: string; body: string }
   | { kind: "stateChange"; sessionId: string; from: string; to: string }
   | { kind: "warn"; sessionId: string; message: string }
   | { kind: "error"; sessionId: string; message: string }
@@ -43,6 +49,7 @@ export type SessionInfo = {
   readonly claudeSessionId: string | null;
   readonly cwd: string | null;
   readonly lastActiveAt: number;
+  readonly favorite: boolean;
 };
 
 export const PermissionModes = ["default", "plan", "acceptEdits", "bypassPermissions"] as const;
@@ -111,11 +118,13 @@ export type InvokeContract = {
   createSession:     { in: CreateSessionOptions | undefined; out: string };
   sendMessage:       { in: { sessionId: string; text: string; images?: ImageData[] }; out: void };
   answerQuestion:    { in: { sessionId: string; toolUseId: string; answer: string }; out: void };
+  interruptSession:  { in: { sessionId: string }; out: void };
   killSession:       { in: { sessionId: string }; out: void };
   listSessions:      { in: undefined; out: SessionInfo[] };
   updatePolicy:      { in: { sessionId: string; policy: ToolPolicyConfig }; out: void };
   getPolicy:         { in: { sessionId: string }; out: ToolPolicyConfig };
   renameSession:     { in: { sessionId: string; name: string }; out: void };
+  setFavorite:       { in: { sessionId: string; favorite: boolean }; out: void };
   resumeSession:     { in: { sessionId: string }; out: void };
   resumeInTerminal:  { in: { sessionId: string }; out: void };
   deleteSession:     { in: { sessionId: string }; out: void };
@@ -184,9 +193,9 @@ export type Pushers = EventPushers<EventContract>;
 
 /** Invoke channel names (must match InvokeContract keys). */
 export const INVOKE_CHANNELS = [
-  "createSession", "sendMessage", "answerQuestion", "killSession",
+  "createSession", "sendMessage", "answerQuestion", "interruptSession", "killSession",
   "listSessions", "updatePolicy", "getPolicy",
-  "renameSession", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
+  "renameSession", "setFavorite", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
   "getConfig", "setConfig", "pickFolder", "takeScreenshot",
   "popOutSession", "popInSession", "focusPopout",
   "winMinimize", "winMaximize", "winClose",

@@ -30,6 +30,7 @@ type ManagedSession = {
   policy: ToolPolicyConfig;
   permissionMode: PermissionMode;
   entries: ChatEntry[] | null;   // null = not yet loaded (lazy)
+  favorite: boolean;
   createdAt: number;
   lastActiveAt: number;
 };
@@ -70,7 +71,13 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
 
   session.on("ready", (init) => {
     managed.claudeSessionId = init.session_id;
-    forward({ kind: "ready", sessionId: id, model: init.model, tools: init.tools });
+    managed.cwd = managed.cwd ?? init.cwd;
+    forward({
+      kind: "ready", sessionId: id, model: init.model, tools: init.tools,
+      mcpServers: init.mcp_servers as { name: string; status: string }[] | undefined,
+      claudeCodeVersion: init.claude_code_version,
+      cwd: init.cwd,
+    });
   });
 
   session.on("text", (ev) => {
@@ -90,7 +97,25 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("result", (r) => {
-    forward({ kind: "result", sessionId: id, text: r.result, cost: r.total_cost_usd, turns: r.num_turns, durationMs: r.duration_ms });
+    forward({ kind: "result", sessionId: id, text: r.result ?? "", cost: r.total_cost_usd, turns: r.num_turns, durationMs: r.duration_ms, durationApiMs: r.duration_api_ms, isError: r.is_error });
+  });
+
+  session.on("rateLimit", (ev) => {
+    forward({ kind: "rateLimit", sessionId: id, resetsAt: ev.rate_limit_info.resetsAt, status: ev.rate_limit_info.status });
+  });
+
+  session.on("message", (msg) => {
+    if (msg.message.usage) {
+      sink({ kind: "usage", sessionId: id, inputTokens: msg.message.usage.input_tokens, outputTokens: msg.message.usage.output_tokens });
+    }
+  });
+
+  session.on("stop", (ev) => {
+    forward({ kind: "stop", sessionId: id, stopHookActive: ev.stopHookActive });
+  });
+
+  session.on("notification", (ev) => {
+    forward({ kind: "notification", sessionId: id, title: ev.title, body: ev.body });
   });
 
   session.on("stateChange", (ev) => {
@@ -119,6 +144,7 @@ export type SessionManager = {
   create(options?: CreateSessionOptions): Promise<string>;
   send(id: string, text: string, images?: ImageData[]): void;
   answerQuestion(id: string, toolUseId: string, answer: string): void;
+  interrupt(id: string): void;
   kill(id: string): void;
   remove(id: string): void;
   rename(id: string, name: string): void;
@@ -126,6 +152,7 @@ export type SessionManager = {
   getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null };
   list(): SessionInfo[];
   getEntries(id: string): ChatEntry[];
+  setFavorite(id: string, favorite: boolean): void;
   updatePolicy(id: string, policy: ToolPolicyConfig): void;
   getPolicy(id: string): ToolPolicyConfig;
   dispose(): Promise<void>;
@@ -155,6 +182,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       policy: { preset: (m.policyPreset as PolicyPreset) ?? "unrestricted", blockedTools: [] },
       permissionMode: (m.permissionMode as PermissionMode) ?? "default",
       entries: null, // lazy — loaded on demand
+      favorite: m.favorite ?? false,
       createdAt: stub.createdAt,
       lastActiveAt: stub.lastActiveAt,
     };
@@ -205,6 +233,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         policy,
         permissionMode: permMode,
         entries: [{ kind: "system", text: `Session created · ${permMode}`, ts: now }],
+        favorite: false,
         createdAt: now,
         lastActiveAt: now,
       };
@@ -231,6 +260,12 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const managed = getManaged(id);
       if (!managed.session) throw new Error("Session is dead");
       managed.session.answerQuestion(toolUseId, answer);
+    },
+
+    interrupt(id: string): void {
+      const managed = sessions.get(id);
+      if (!managed?.session) return;
+      managed.session.interrupt();
     },
 
     kill(id: string): void {
@@ -308,11 +343,20 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         claudeSessionId: s.claudeSessionId,
         cwd: s.cwd,
         lastActiveAt: s.lastActiveAt,
+        favorite: s.favorite,
       }));
     },
 
     getEntries(id: string): ChatEntry[] {
       return ensureEntries(getManaged(id));
+    },
+
+    setFavorite(id: string, favorite: boolean): void {
+      const managed = getManaged(id);
+      managed.favorite = favorite;
+      if (managed.claudeSessionId) {
+        updateSessionMeta(managed.claudeSessionId, { favorite });
+      }
     },
 
     updatePolicy(id: string, policy: ToolPolicyConfig): void {

@@ -43,6 +43,9 @@ export type SessionEventMap = {
   // Claude stopped generating
   stop: { stopHookActive: boolean; lastMessage: string };
 
+  // Notifications (from hook)
+  notification: { title?: string; body: string };
+
   // Errors & warnings
   error: Error;
   warn: string;
@@ -64,11 +67,17 @@ export type Session = {
 
   setToolPolicy(policy: ToolPolicy | null): void;
   answerQuestion(toolUseId: string, answer: string): void;
+  /** Soft interrupt: abort the current turn without killing the session. */
+  interrupt(): void;
   kill(): void;
   dispose(): Promise<void>;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────
+
+function writeStdin(proc: ChildProcess, obj: unknown): void {
+  proc.stdin!.write(JSON.stringify(obj) + "\n");
+}
 
 function writeUserMessage(proc: ChildProcess, text: string, images?: ImageData[]): void {
   const content: unknown[] = [];
@@ -81,11 +90,20 @@ function writeUserMessage(proc: ChildProcess, text: string, images?: ImageData[]
     }
   }
   content.push({ type: "text", text });
-  const msg = JSON.stringify({
+  writeStdin(proc, {
     type: "user",
     message: { role: "user", content },
   });
-  proc.stdin!.write(msg + "\n");
+}
+
+/** Send a control_request to the Claude process (same protocol as the official SDK). */
+function writeControlRequest(proc: ChildProcess, request: Record<string, unknown>): void {
+  const requestId = Math.random().toString(36).substring(2, 15);
+  writeStdin(proc, {
+    request_id: requestId,
+    type: "control_request",
+    request,
+  });
 }
 
 function extractText(msg: AssistantMessage): string {
@@ -190,6 +208,12 @@ export async function createSession(
       emitter.emit("stop", {
         stopHookActive: payload.stop_hook_active,
         lastMessage: payload.last_assistant_message,
+      });
+    },
+    onNotification: (payload: Record<string, unknown>) => {
+      emitter.emit("notification", {
+        title: typeof payload.title === "string" ? payload.title : undefined,
+        body: typeof payload.body === "string" ? payload.body : JSON.stringify(payload),
       });
     },
   });
@@ -301,6 +325,13 @@ export async function createSession(
         pendingQuestions.delete(toolUseId);
         resolve(answer);
       }
+    },
+
+    interrupt(): void {
+      if (state !== "busy") return;
+      // Send a control_request with subtype "interrupt" — same protocol as the official SDK.
+      // The Claude process gracefully stops the current turn and emits a result event.
+      writeControlRequest(proc, { subtype: "interrupt" });
     },
 
     kill(): void {

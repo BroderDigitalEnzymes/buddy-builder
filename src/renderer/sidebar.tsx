@@ -185,25 +185,35 @@ type SessionItemProps = {
   activeId: string | null;
   poppedOutIds?: Set<string>;
   live: boolean;
+  pinned?: boolean;
   timeLabel?: string;
   onSwitch: (id: string) => void;
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
+  onToggleFavorite?: (id: string) => void;
 };
 
-function SessionItem({ session: s, depth, activeId, poppedOutIds, live, timeLabel, onSwitch, onKill, onDelete, onRename }: SessionItemProps) {
+function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, timeLabel, onSwitch, onKill, onDelete, onRename, onToggleFavorite }: SessionItemProps) {
   const isDead = s.state === "dead";
   const isPoppedOut = poppedOutIds?.has(s.id) ?? false;
   return (
     <button
-      className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""} ${isPoppedOut ? "popped-out" : ""}`}
+      className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""} ${isPoppedOut ? "popped-out" : ""} ${pinned ? "session-pinned" : ""}`}
       style={{ paddingLeft: `${12 + depth * 14}px` }}
       onClick={() => onSwitch(s.id)}
       title={isPoppedOut ? "Focus pop-out window" : undefined}
     >
       <span className="dir-tree-toggle-spacer" />
-      <span className={`session-dot state-${s.state}`} />
+      {pinned ? (
+        <span
+          className="session-pin"
+          title="Unpin"
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(s.id); }}
+        >{"\u2605"}</span>
+      ) : (
+        <span className={`session-dot state-${s.state}`} />
+      )}
       <EditableSessionLabel name={s.name} onRename={(name) => onRename(s.id, name)} />
       {timeLabel && <span className="session-time">{timeLabel}</span>}
       {isPoppedOut && <span className="popout-indicator" title="Popped out">&#8599;</span>}
@@ -481,11 +491,12 @@ type SidebarProps = {
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onCreate: (perm: PermissionMode, cwd?: string) => void;
+  onToggleFavorite: (id: string) => void;
 };
 
 const HISTORY_LIMIT = 20;
 
-export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds, onSwitch, onKill, onDelete, onRename, onCreate }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite }: SidebarProps) {
   const [perm, setPerm] = useState<PermissionMode>("default");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -502,13 +513,23 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
 
   const liveTree = useMemo(() => buildDirTree(liveSessions, search), [liveSessions, search]);
 
-  // History: flat list, sorted by recency, capped, filterable
+  // Pinned sessions (favorites) — shown at top of history, any state
+  const pinnedSessions = useMemo(() => {
+    let pinned = sessions.filter((s) => s.favorite && s.state === "dead");
+    if (q) pinned = pinned.filter(s => fuzzyMatch(q, s.name) || fuzzyMatch(q, s.cwd ?? "") || fuzzyMatch(q, s.projectName));
+    pinned.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+    return pinned;
+  }, [sessions, q]);
+
+  const pinnedIds = useMemo(() => new Set(pinnedSessions.map(s => s.id)), [pinnedSessions]);
+
+  // History: flat list, sorted by recency, capped, filterable (excludes pinned)
   const historySessions = useMemo(() => {
-    let dead = sessions.filter((s) => s.state === "dead");
+    let dead = sessions.filter((s) => s.state === "dead" && !pinnedIds.has(s.id));
     if (q) dead = dead.filter(s => fuzzyMatch(q, s.name) || fuzzyMatch(q, s.cwd ?? "") || fuzzyMatch(q, s.projectName));
     dead.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
     return dead.slice(0, HISTORY_LIMIT);
-  }, [sessions, q]);
+  }, [sessions, q, pinnedIds]);
 
   const toggleLive = useCallback((p: string) => {
     setLiveExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
@@ -559,9 +580,29 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
           </div>
           <div className="sidebar-drag" onMouseDown={onMouseDown} />
           <div className="sidebar-panel" style={{ flex: 1 }}>
-            <div className="panel-label">History ({historySessions.length})</div>
+            <div className="panel-label">History ({pinnedSessions.length + historySessions.length})</div>
             <div className="panel-scroll">
-              {historySessions.length === 0 ? (
+              {pinnedSessions.length > 0 && pinnedSessions.map(s => (
+                <SessionItem
+                  key={s.id}
+                  session={s}
+                  depth={0}
+                  activeId={activeId}
+                  poppedOutIds={poppedOutIds}
+                  live={false}
+                  pinned={true}
+                  timeLabel={relativeTime(s.lastActiveAt)}
+                  onSwitch={onSwitch}
+                  onKill={onKill}
+                  onDelete={onDelete}
+                  onRename={onRename}
+                  onToggleFavorite={onToggleFavorite}
+                />
+              ))}
+              {pinnedSessions.length > 0 && historySessions.length > 0 && (
+                <div className="pinned-divider" />
+              )}
+              {historySessions.length === 0 && pinnedSessions.length === 0 ? (
                 <div className="panel-empty">No sessions found</div>
               ) : historySessions.map(s => (
                 <SessionItem

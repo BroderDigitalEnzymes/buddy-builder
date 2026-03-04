@@ -8,3 +8,7 @@ import "./ask-question.js";
 import "./agent.js";
 import "./tasks.js";
 import "./bash.js";
+import "./file-ops.js";
+import "./search.js";
+import "./web.js";
+import "./notebook.js";
