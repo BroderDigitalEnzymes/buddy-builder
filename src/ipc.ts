@@ -1,7 +1,11 @@
 import type {
   SessionConfig,
   SessionState,
+  PermissionMode,
 } from "./schema.js";
+
+export { PermissionModes } from "./schema.js";
+export type { PermissionMode } from "./schema.js";
 
 // ─── Image data (shared between main + renderer) ─────────────────
 
@@ -52,8 +56,7 @@ export type SessionInfo = {
   readonly favorite: boolean;
 };
 
-export const PermissionModes = ["default", "plan", "acceptEdits", "bypassPermissions"] as const;
-export type PermissionMode = (typeof PermissionModes)[number];
+// PermissionModes and PermissionMode are re-exported from schema.ts above.
 
 export const PolicyPresets = ["unrestricted", "allow-edits", "no-writes", "read-only"] as const;
 export type PolicyPreset = (typeof PolicyPresets)[number];

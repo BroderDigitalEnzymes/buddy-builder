@@ -211,6 +211,24 @@ function setupIpc(mgr: SessionManager): void {
     (ch, fn) => ipcMain.handle(ch, fn as any),
     handlers,
   );
+
+  // Override window controls to use event.sender (not getFocusedWindow)
+  // so popout close doesn't kill the main window.
+  for (const ch of ["winClose", "winMinimize", "winMaximize"] as const) {
+    ipcMain.removeHandler(ch);
+  }
+  ipcMain.handle("winMinimize", (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
+  });
+  ipcMain.handle("winMaximize", (event) => {
+    const w = BrowserWindow.fromWebContents(event.sender);
+    if (w?.isMaximized()) w.unmaximize();
+    else w?.maximize();
+  });
+  ipcMain.handle("winClose", (event) => {
+    const w = BrowserWindow.fromWebContents(event.sender);
+    if (w) setImmediate(() => w.close());
+  });
 }
 
 // ─── App lifecycle ──────────────────────────────────────────────

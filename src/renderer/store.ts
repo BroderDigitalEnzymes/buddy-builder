@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from "react";
 import {
   PERMISSION_MODE_PRESETS,
-  type ClientApi,
   type SessionEvent,
   type ToolPolicyConfig,
   type PolicyPreset,
@@ -9,6 +8,7 @@ import {
   type ChatEntry,
   type ImageData,
 } from "../ipc.js";
+import { api } from "./utils.js";
 import { applyEvent } from "../entry-builder.js";
 
 export type { ChatEntry } from "../ipc.js";
@@ -95,14 +95,12 @@ export function getState(): StoreState {
 
 // ─── Actions ─────────────────────────────────────────────────────
 
-const api = (): ClientApi => (window as any).claude;
-
 export async function switchSession(id: string): Promise<void> {
   if (IS_POPOUT && id !== POPOUT_SESSION_ID) return; // locked to one session
   state.activeId = id;
-  // Lazy-load entries if not yet loaded
+  // Lazy-load entries if not yet loaded (dead history OR live popout inheriting conversation)
   const data = state.sessions.get(id);
-  if (data && data.entries.length === 0 && data.state === "dead") {
+  if (data && data.entries.length === 0) {
     try {
       const entries = await api().getSessionEntries({ sessionId: id });
       data.entries = entries;
@@ -199,12 +197,12 @@ export async function sendMessage(text: string, images?: ImageData[]): Promise<v
   if (!data || data.state === "dead") return;
 
   // Always show the user entry immediately
-  const entry: ChatEntry = { kind: "user", text, ts: Date.now() };
-  if (images?.length) entry.images = images;
+  const entry: ChatEntry = { kind: "user", text, ts: Date.now(), ...(images?.length ? { images } : {}) };
   data.entries.push(entry);
 
   if (data.state === "idle") {
     // Send immediately
+    state.sessions.set(state.activeId, { ...data });
     emit();
     try {
       await api().sendMessage({ sessionId: state.activeId, text, images });

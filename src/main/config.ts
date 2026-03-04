@@ -1,10 +1,7 @@
 import { app } from "electron";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-
-export type AppConfig = {
-  claudePath: string;
-};
+import type { AppConfig } from "../ipc.js";
 
 const DEFAULTS: AppConfig = {
   claudePath: "claude",

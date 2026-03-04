@@ -1,7 +1,5 @@
 import React, { memo, useCallback } from "react";
-import type { ClientApi } from "../ipc.js";
-
-const api = (): ClientApi => (window as any).claude;
+import { api } from "./utils.js";
 
 export const WindowControls = memo(function WindowControls() {
   const onMinimize = useCallback(() => api().winMinimize(), []);

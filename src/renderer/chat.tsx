@@ -1,8 +1,10 @@
 import React, { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
-import { marked } from "marked";
+import { Marked } from "marked";
 import type { SessionData } from "./store.js";
 import type { ChatEntry, ImageData, PolicyPreset } from "../ipc.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
+import { getSender, api, type Sender } from "./utils.js";
+import { useClickOutside } from "./hooks.js";
 
 // ─── Helpers: formatting ────────────────────────────────────────
 
@@ -38,22 +40,10 @@ export function RateLimitBanner({ rateLimit }: { rateLimit: { resetsAt: number; 
   );
 }
 
-// Configure marked for safe, synchronous rendering
-marked.setOptions({ async: false, breaks: true });
+// Scoped marked instance (no global mutation)
+const md = new Marked({ breaks: true });
 
-// ─── Sender helpers ──────────────────────────────────────────────
-
-type Sender = "user" | "claude" | "system";
-
-function getSender(kind: ChatEntry["kind"]): Sender {
-  switch (kind) {
-    case "user": return "user";
-    case "text":
-    case "tool": return "claude";
-    case "system":
-    case "result": return "system";
-  }
-}
+// ─── Sender helpers (getSender and Sender imported from utils.ts) ─
 
 function formatTime(ts: number): string {
   if (!ts) return "";
@@ -140,7 +130,7 @@ export function ToolEntry({ entry }: ToolEntryProps) {
 // ─── Markdown text renderer ──────────────────────────────────────
 
 function MarkdownText({ text }: { text: string }) {
-  const html = useMemo(() => marked.parse(text) as string, [text]);
+  const html = useMemo(() => md.parse(text) as string, [text]);
   return <div className="msg-text prose" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
@@ -333,14 +323,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (open) {
-      (window as any).claude.getConfig().then((cfg: any) => setClaudePath(cfg.claudePath));
+      api().getConfig().then((cfg: any) => setClaudePath(cfg.claudePath));
       setStatus("");
     }
   }, [open]);
 
   const handleSave = useCallback(async () => {
     try {
-      await (window as any).claude.setConfig({ claudePath });
+      await api().setConfig({ claudePath });
       setStatus("Saved. Restart sessions for changes to take effect.");
     } catch (err) {
       setStatus(`Error: ${err}`);
@@ -410,14 +400,7 @@ function SessionInfoButton({ session }: { session: SessionData }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  useClickOutside(ref, () => setOpen(false), open);
 
   const hasInfo = session.model || session.tools.length > 0 || session.mcpServers.length > 0 || session.claudeCodeVersion;
   if (!hasInfo) return null;
@@ -482,16 +465,7 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [dropdownOpen]);
+  useClickOutside(dropdownRef, () => setDropdownOpen(false), dropdownOpen);
 
   if (!session) {
     return <div id="chat-header" />;

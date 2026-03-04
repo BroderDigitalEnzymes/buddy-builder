@@ -131,8 +131,6 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("exit", (ev) => {
-    console.log(`[DEBUG] exit event: code=${ev.code} signal=${ev.signal} sessionId=${id}`);
-    console.trace("[DEBUG] exit stack trace");
     managed.session = null;
     forward({ kind: "exit", sessionId: id, code: ev.code });
   });
@@ -179,8 +177,8 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       claudeSessionId: stub.claudeSessionId,
       cwd: stub.cwd,
       transcriptPath: stub.transcriptPath,
-      policy: { preset: (m.policyPreset as PolicyPreset) ?? "unrestricted", blockedTools: [] },
-      permissionMode: (m.permissionMode as PermissionMode) ?? "default",
+      policy: { preset: m.policyPreset ?? "unrestricted", blockedTools: [] },
+      permissionMode: m.permissionMode ?? "default",
       entries: null, // lazy — loaded on demand
       favorite: m.favorite ?? false,
       createdAt: stub.createdAt,
@@ -246,14 +244,11 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
     send(id: string, text: string, images?: ImageData[]): void {
       const managed = getManaged(id);
-      console.log(`[DEBUG] send: id=${id} hasSession=${!!managed.session} state=${managed.session?.state}`);
       if (!managed.session) throw new Error("Session is dead");
-      const entry: ChatEntry = { kind: "user", text, ts: Date.now() };
-      if (images?.length) entry.images = images;
+      const entry: ChatEntry = { kind: "user", text, ts: Date.now(), ...(images?.length ? { images } : {}) };
       ensureEntries(managed).push(entry);
       managed.lastActiveAt = Date.now();
       managed.session.send(text, images);
-      console.log(`[DEBUG] send: message sent, state=${managed.session.state}`);
     },
 
     answerQuestion(id: string, toolUseId: string, answer: string): void {
@@ -304,8 +299,6 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       if (managed.session) throw new Error("Session is already alive");
       if (!managed.claudeSessionId) throw new Error("No Claude session ID to resume");
 
-      console.log(`[DEBUG] resume: id=${id} claudeSessionId=${managed.claudeSessionId} claudePath=${claudePath}`);
-
       const config: SessionConfig = {
         claudePath,
         permissionMode: managed.permissionMode,
@@ -314,7 +307,6 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       };
 
       const session = await createSession(config);
-      console.log(`[DEBUG] resume: session created, state=${session.state}`);
       managed.session = session;
       session.setToolPolicy(buildToolPolicy(managed.policy));
 

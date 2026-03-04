@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { basename } from "../utils.js";
 import { registerToolView, type ToolViewProps, type ToolChatEntry } from "./core.js";
 
 // ─── Read view ──────────────────────────────────────────────────
@@ -56,7 +57,7 @@ registerToolView({
   summary: (entry) => {
     const input = entry.toolInput as ReadInput;
     const lines = entry.toolResult ? entry.toolResult.split("\n").length : 0;
-    const name = input.file_path.replace(/\\/g, "/").split("/").pop() ?? input.file_path;
+    const name = basename(input.file_path);
     return `\u{1F4C4} ${name} (${lines} lines)`;
   },
 });
@@ -106,7 +107,7 @@ registerToolView({
   fullReplace: true,
   summary: (entry) => {
     const input = entry.toolInput as WriteInput;
-    const name = input.file_path.replace(/\\/g, "/").split("/").pop() ?? input.file_path;
+    const name = basename(input.file_path);
     const lines = input.content.split("\n").length;
     return `+ ${name} (${lines} lines)`;
   },
@@ -147,7 +148,7 @@ registerToolView({
   fullReplace: true,
   summary: (entry) => {
     const input = entry.toolInput as EditInput;
-    const name = input.file_path.replace(/\\/g, "/").split("/").pop() ?? input.file_path;
+    const name = basename(input.file_path);
     return `\u270E ${name}`;
   },
 });

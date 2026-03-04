@@ -1,4 +1,5 @@
 import React from "react";
+import { basename } from "../utils.js";
 import { registerToolView, type ToolViewProps } from "./core.js";
 
 // ─── NotebookEdit view ──────────────────────────────────────────
@@ -46,7 +47,7 @@ registerToolView({
   fullReplace: true,
   summary: (entry) => {
     const input = entry.toolInput as NotebookEditInput;
-    const name = input.notebook_path.replace(/\\/g, "/").split("/").pop() ?? input.notebook_path;
+    const name = basename(input.notebook_path);
     const mode = input.edit_mode ?? "edit";
     return `\u{1F4D3} ${name} (${mode} cell${input.cell_number != null ? ` ${input.cell_number}` : ""})`;
   },

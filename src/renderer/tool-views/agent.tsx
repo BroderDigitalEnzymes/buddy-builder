@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import type { ChatEntry } from "../../ipc.js";
 import { EntryRow } from "../components.js";
+import { getSender } from "../utils.js";
 import { registerToolView, type ToolViewProps, type ToolChatEntry } from "./core.js";
 
 // ─── Agent / Task sub-agent view ──────────────────────────────────
@@ -16,16 +16,6 @@ function agentSummaryText(entry: ToolChatEntry): string {
   const tools = children.filter((c) => c.kind === "tool").length;
   const texts = children.filter((c) => c.kind === "text").length;
   return `${tools} tool call${tools !== 1 ? "s" : ""}, ${texts} response${texts !== 1 ? "s" : ""}`;
-}
-
-function getSender(kind: ChatEntry["kind"]): string {
-  switch (kind) {
-    case "user": return "user";
-    case "text":
-    case "tool": return "claude";
-    case "system":
-    case "result": return "system";
-  }
 }
 
 function AgentViewRenderer({ entry }: ToolViewProps) {

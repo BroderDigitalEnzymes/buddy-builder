@@ -3,9 +3,7 @@ import { createSession } from "./index.js";
 async function main() {
   console.log("Creating session...");
 
-  const session = await createSession({
-    claudePath: String.raw`C:\Users\eran\.local\bin\claude.exe`,
-  });
+  const session = await createSession();
 
   // Log all events
   session.on("ready", (init) =>

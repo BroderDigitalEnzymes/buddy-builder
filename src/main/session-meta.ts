@@ -1,14 +1,15 @@
 import { app } from "electron";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import type { PermissionMode, PolicyPreset } from "../ipc.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
 export type SessionMeta = {
   name?: string;
   favorite?: boolean;
-  permissionMode?: string;
-  policyPreset?: string;
+  permissionMode?: PermissionMode;
+  policyPreset?: PolicyPreset;
 };
 
 export type MetaStore = Record<string, SessionMeta>;

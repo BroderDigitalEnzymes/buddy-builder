@@ -2,6 +2,7 @@ import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "
 import { pickFolder, type SessionData } from "./store.js";
 import type { PermissionMode } from "../ipc.js";
 import { SettingsModal } from "./chat.js";
+import { useDrag } from "./hooks.js";
 
 // ─── Fuzzy match ─────────────────────────────────────────────────
 
@@ -409,77 +410,6 @@ function DirTreeList({
   );
 }
 
-// ─── Drag bar hook ───────────────────────────────────────────────
-
-function useDragBar(containerRef: React.RefObject<HTMLDivElement | null>, initial: number) {
-  const [topRatio, setTopRatio] = useState(initial);
-  const dragging = useRef(false);
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const y = ev.clientY - rect.top;
-      const ratio = Math.max(0.08, Math.min(0.92, y / rect.height));
-      setTopRatio(ratio);
-    };
-
-    const onUp = () => {
-      dragging.current = false;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    document.body.style.cursor = "row-resize";
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [containerRef]);
-
-  return { topRatio, onMouseDown };
-}
-
-// ─── Sidebar resize hook ─────────────────────────────────────────
-
-const SIDEBAR_MIN = 180;
-const SIDEBAR_MAX = 500;
-const SIDEBAR_DEFAULT = 240;
-
-function useSidebarResize() {
-  const [width, setWidth] = useState(SIDEBAR_DEFAULT);
-  const dragging = useRef(false);
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current) return;
-      setWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, ev.clientX)));
-    };
-
-    const onUp = () => {
-      dragging.current = false;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
-
-  return { width, onResizeMouseDown: onMouseDown };
-}
-
 // ─── Sidebar ─────────────────────────────────────────────────────
 
 type SidebarProps = {
@@ -502,8 +432,18 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
   const [search, setSearch] = useState("");
   const [liveExpanded, setLiveExpanded] = useState<Set<string>>(new Set());
   const panelsRef = useRef<HTMLDivElement>(null);
-  const { topRatio, onMouseDown } = useDragBar(panelsRef, 0.3);
-  const { width, onResizeMouseDown } = useSidebarResize();
+  const { value: topRatio, onMouseDown } = useDrag({
+    initial: 0.3, min: 0.08, max: 0.92, cursor: "row-resize",
+    getPosition: (e) => {
+      const rect = panelsRef.current?.getBoundingClientRect();
+      if (!rect) return 0.3;
+      return (e.clientY - rect.top) / rect.height;
+    },
+  });
+  const { value: width, onMouseDown: onResizeMouseDown } = useDrag({
+    initial: 240, min: 180, max: 500,
+    getPosition: (e) => e.clientX,
+  });
 
   const isSearching = search.trim().length > 0;
   const q = search.trim();

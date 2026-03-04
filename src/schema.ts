@@ -171,6 +171,11 @@ export type PostToolUsePayload = z.infer<typeof PostToolUsePayloadSchema>;
 export type StopPayload = z.infer<typeof StopPayloadSchema>;
 export type NotificationPayload = z.infer<typeof NotificationPayloadSchema>;
 
+// ─── Permission Modes ────────────────────────────────────────
+
+export const PermissionModes = ["default", "plan", "acceptEdits", "bypassPermissions"] as const;
+export type PermissionMode = (typeof PermissionModes)[number];
+
 // ─── Session Config ─────────────────────────────────────────────
 
 export const SessionConfigSchema = z.object({
@@ -181,9 +186,7 @@ export const SessionConfigSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
   systemPrompt: z.string().optional(),
   appendSystemPrompt: z.string().optional(),
-  permissionMode: z
-    .enum(["default", "plan", "acceptEdits", "bypassPermissions"])
-    .optional(),
+  permissionMode: z.enum(PermissionModes).optional(),
   resumeSessionId: z.string().optional(),
   maxTurns: z.number().positive().optional(),
   noSessionPersistence: z.boolean().optional(),
