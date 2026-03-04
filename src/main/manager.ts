@@ -80,6 +80,10 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
     });
   });
 
+  session.on("textDelta", (ev) => {
+    forward({ kind: "textDelta", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
+  });
+
   session.on("text", (ev) => {
     forward({ kind: "text", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
   });

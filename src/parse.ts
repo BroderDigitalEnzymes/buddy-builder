@@ -7,6 +7,7 @@ import {
   UserEchoSchema,
   SystemEventSchema,
   type OutputMessage,
+  type StreamEventMessage,
 } from "./schema.js";
 
 // ─── Line-level NDJSON parser ───────────────────────────────────
@@ -37,6 +38,8 @@ function parseJsonMessage(json: any): OutputMessage | null {
       return safeParse(RateLimitEventSchema, json);
     case "user":
       return safeParse(UserEchoSchema, json);
+    case "stream_event":
+      return json as StreamEventMessage;
     case "control_response":
       return null; // ACK for control_request — silently ignore
     default:

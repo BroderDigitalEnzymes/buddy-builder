@@ -159,7 +159,9 @@ function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
       );
 
     case "text":
-      return <MarkdownText text={entry.text} />;
+      return entry.streaming
+        ? <div className="msg-text streaming-text">{entry.text}<span className="streaming-cursor" /></div>
+        : <MarkdownText text={entry.text} />;
 
     case "tool": {
       const classes = ["tool-wrap"];
@@ -293,7 +295,7 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
             />
           );
         })}
-        {isBusy && (
+        {isBusy && !entries.some(e => e.kind === "text" && e.streaming) && (
           <div className="msg-row msg-row-first thinking-row">
             <div className="msg-avatar msg-avatar-claude msg-avatar-thinking">
               {SENDER_ICONS.claude}

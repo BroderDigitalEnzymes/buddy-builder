@@ -125,13 +125,29 @@ export type RateLimitEvent = z.infer<typeof RateLimitEventSchema>;
 export type UserEcho = z.infer<typeof UserEchoSchema>;
 export type SystemEvent = z.infer<typeof SystemEventSchema>;
 
+// ─── Stream Event (loose type — no Zod) ─────────────────────────
+
+export type StreamEventMessage = {
+  type: "stream_event";
+  event: {
+    type: string;
+    index?: number;
+    content_block?: { type: string; [k: string]: unknown };
+    delta?: { type: string; text?: string; partial_json?: string; [k: string]: unknown };
+    [k: string]: unknown;
+  };
+  parent_tool_use_id?: string | null;
+  session_id: string;
+};
+
 export type OutputMessage =
   | InitMessage
   | AssistantMessage
   | ResultMessage
   | RateLimitEvent
   | UserEcho
-  | SystemEvent;
+  | SystemEvent
+  | StreamEventMessage;
 
 // ─── Hook Payloads ──────────────────────────────────────────────
 

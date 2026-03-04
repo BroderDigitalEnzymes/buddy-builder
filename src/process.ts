@@ -22,6 +22,7 @@ export function buildArgs(
     "--input-format", "stream-json",
     "--output-format", "stream-json",
     "--verbose",
+    "--include-partial-messages",
     "--settings", settingsFilePath,
   ];
 

@@ -18,7 +18,7 @@ export type ImageData = {
 
 export type ChatEntry =
   | { kind: "user"; text: string; images?: ImageData[]; ts: number }
-  | { kind: "text"; text: string; ts: number }
+  | { kind: "text"; text: string; streaming?: boolean; ts: number }
   | { kind: "tool"; toolName: string; toolUseId: string; status: "running" | "done" | "blocked"; detail: string; toolInput: Record<string, unknown>; toolResult?: string; children?: ChatEntry[]; ts: number }
   | { kind: "result"; cost: number; turns: number; durationMs: number; ts: number }
   | { kind: "system"; text: string; ts: number };
@@ -30,6 +30,7 @@ export type SessionEvent =
       mcpServers?: { name: string; status: string }[];
       claudeCodeVersion?: string; cwd?: string }
   | { kind: "text"; sessionId: string; text: string; parentToolUseId?: string }
+  | { kind: "textDelta"; sessionId: string; text: string; parentToolUseId?: string }
   | { kind: "toolStart"; sessionId: string; toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string }
   | { kind: "toolEnd"; sessionId: string; toolName: string; toolUseId: string; response: unknown }
   | { kind: "toolBlocked"; sessionId: string; toolName: string; reason: string; parentToolUseId?: string }

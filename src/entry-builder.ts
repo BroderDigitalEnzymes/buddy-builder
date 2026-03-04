@@ -69,10 +69,24 @@ export function applyEvent(entries: ChatEntry[], event: SessionEvent): boolean {
     case "ready":
       return false;
 
+    case "textDelta": {
+      const target = resolveTargetEntries(entries, event.parentToolUseId);
+      const last = target[target.length - 1];
+      if (last?.kind === "text" && last.streaming) {
+        last.text += event.text;
+      } else {
+        target.push({ kind: "text", text: event.text, streaming: true, ts: now });
+      }
+      return true;
+    }
+
     case "text": {
       const target = resolveTargetEntries(entries, event.parentToolUseId);
       const last = target[target.length - 1];
-      if (last?.kind === "text") {
+      if (last?.kind === "text" && last.streaming) {
+        last.text = event.text;   // replace with final complete text
+        delete last.streaming;     // finalize
+      } else if (last?.kind === "text") {
         last.text += event.text;
       } else {
         target.push({ kind: "text", text: event.text, ts: now });

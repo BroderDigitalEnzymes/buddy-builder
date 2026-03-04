@@ -13,6 +13,7 @@ import {
   type AssistantMessage,
   type ResultMessage,
   type RateLimitEvent,
+  type StreamEventMessage,
   type TextBlock,
   type ToolUseBlock,
   type PreToolUsePayload,
@@ -32,6 +33,7 @@ export type SessionEventMap = {
   // Response stream
   message: AssistantMessage;
   text: { text: string; parentToolUseId?: string };
+  textDelta: { text: string; parentToolUseId?: string };
   result: ResultMessage;
   rateLimit: RateLimitEvent;
 
@@ -237,6 +239,17 @@ export async function createSession(
           emitter.emit("message", msg);
           const text = extractText(msg);
           if (text) emitter.emit("text", { text, parentToolUseId: msg.parent_tool_use_id ?? undefined });
+          break;
+        }
+
+        case "stream_event": {
+          const ev = (msg as StreamEventMessage).event;
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
+            emitter.emit("textDelta", {
+              text: ev.delta.text,
+              parentToolUseId: (msg as StreamEventMessage).parent_tool_use_id ?? undefined,
+            });
+          }
           break;
         }
 

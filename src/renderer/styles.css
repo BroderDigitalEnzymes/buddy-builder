@@ -1007,6 +1007,20 @@ body {
   color: var(--text);
 }
 
+/* ─── Streaming text ─── */
+
+.streaming-text { white-space: pre-wrap; }
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--text-muted);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
 /* ─── Markdown prose ─── */
 
 .prose {
