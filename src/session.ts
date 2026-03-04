@@ -230,9 +230,15 @@ export async function createSession(
     (msg) => {
       switch (msg.type) {
         case "system":
-          if (!("model" in msg)) break; // skip non-init system messages
-          sessionId = msg.session_id;
-          emitter.emit("ready", msg as InitMessage);
+          if ("model" in msg) {
+            sessionId = msg.session_id;
+            emitter.emit("ready", msg as InitMessage);
+          } else if (msg.subtype === "compact_boundary") {
+            emitter.emit("compact", {
+              trigger: (msg as any).compactMetadata?.trigger ?? "auto",
+              preTokens: (msg as any).compactMetadata?.preTokens ?? null,
+            });
+          }
           break;
 
         case "assistant": {

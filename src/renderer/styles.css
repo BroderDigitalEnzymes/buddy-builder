@@ -1170,6 +1170,30 @@ body {
   display: inline-block;
 }
 
+.msg-compact {
+  font-size: 12px;
+  color: var(--accent);
+  text-align: center;
+  padding: 4px 14px;
+  background: var(--accent-bg);
+  border: 1px solid rgba(29, 155, 209, 0.2);
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  animation: compact-appear 0.4s ease-out;
+}
+
+.compact-icon {
+  flex-shrink: 0;
+  stroke: var(--accent);
+}
+
+@keyframes compact-appear {
+  from { opacity: 0; transform: scaleX(0.8); }
+  to   { opacity: 1; transform: scaleX(1); }
+}
+
 /* ─── Result divider ─── */
 
 .msg-result-inner {

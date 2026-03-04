@@ -212,6 +212,21 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowPr
     );
   }
 
+  // Compact messages: styled compaction pill
+  if (entry.kind === "compact") {
+    const tokenLabel = entry.preTokens ? ` · ${formatTokens(entry.preTokens)} tokens` : "";
+    return (
+      <div className="msg-row msg-row-system">
+        <div className="msg-compact">
+          <svg className="compact-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M4 2v4l4 2-4 2v4" /><path d="M12 2v4l-4 2 4 2v4" />
+          </svg>
+          Context compacted ({entry.trigger}){tokenLabel}
+        </div>
+      </div>
+    );
+  }
+
   // Result: skip rendering (cost shown in status bar)
   if (entry.kind === "result") {
     return null;

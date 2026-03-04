@@ -12,6 +12,7 @@ export function getSender(kind: ChatEntry["kind"]): Sender {
     case "text":
     case "tool": return "claude";
     case "system":
+    case "compact":
     case "result": return "system";
   }
 }
