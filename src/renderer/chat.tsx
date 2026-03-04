@@ -159,9 +159,19 @@ function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
       );
 
     case "text":
-      return entry.streaming
-        ? <div className="msg-text streaming-text">{entry.text}<span className="streaming-cursor" /></div>
-        : <MarkdownText text={entry.text} />;
+      if (entry.streaming) {
+        // Compact single-line indicator — just enough to show life
+        const lines = entry.text.split("\n");
+        const lastLine = lines[lines.length - 1]?.trimStart() || lines[lines.length - 2]?.trimStart() || "";
+        const preview = lastLine.slice(0, 120);
+        return (
+          <div className="streaming-line">
+            <span className="streaming-pulse" />
+            <span className="streaming-preview">{preview}</span>
+          </div>
+        );
+      }
+      return <MarkdownText text={entry.text} />;
 
     case "tool": {
       const classes = ["tool-wrap"];
