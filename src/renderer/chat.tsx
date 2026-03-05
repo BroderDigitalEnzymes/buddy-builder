@@ -492,11 +492,12 @@ type ChatHeaderProps = {
   session: SessionData | null;
   onSetPreset: (p: PolicyPreset) => void;
   onToggleFavorite: (id: string) => void;
+  onOpenTerminal?: (id: string) => void;
   onPopOut?: (id: string) => void;
   onPopIn?: () => void;
 };
 
-export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onPopOut, onPopIn }: ChatHeaderProps) {
+export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onOpenTerminal, onPopOut, onPopIn }: ChatHeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -530,6 +531,17 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
           </span>
         )}
         <SessionInfoButton session={session} />
+        {onOpenTerminal && session.claudeSessionId && (
+          <button
+            className="chat-header-icon-btn"
+            title="Open in terminal"
+            onClick={() => onOpenTerminal(session.id)}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3l5 4-5 4" /><line x1="9" y1="12" x2="14" y2="12" />
+            </svg>
+          </button>
+        )}
         {onPopOut && session && (
           <button
             className="chat-header-icon-btn popout-btn"
