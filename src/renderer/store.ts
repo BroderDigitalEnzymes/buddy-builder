@@ -156,13 +156,13 @@ export async function loadPersistedSessions(): Promise<void> {
   }
 }
 
-export async function createSession(permissionMode: PermissionMode, cwd?: string): Promise<void> {
+export async function createSession(permissionMode: PermissionMode, cwd?: string, name?: string): Promise<void> {
   try {
-    const id = await api().createSession({ permissionMode, cwd });
+    const id = await api().createSession({ permissionMode, cwd, name });
     state.counter++;
     state.sessions.set(id, {
       id,
-      name: `Session ${state.counter}`,
+      name: name ?? `Session ${state.counter}`,
       projectName: cwd ?? "(new)",
       state: "idle",
       claudeSessionId: null,

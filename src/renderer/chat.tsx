@@ -414,6 +414,7 @@ type SettingsModalProps = {
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [claudePath, setClaudePath] = useState("");
   const [defaultPerm, setDefaultPerm] = useState<PermissionMode>("default");
+  const [defaultFolder, setDefaultFolder] = useState("");
   const [status, setStatus] = useState("");
 
   useEffect(() => {
@@ -421,6 +422,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       api().getConfig().then((cfg: any) => {
         setClaudePath(cfg.claudePath);
         setDefaultPerm(cfg.defaultPermissionMode ?? "default");
+        setDefaultFolder(cfg.defaultProjectsFolder ?? "");
       });
       setStatus("");
     }
@@ -428,12 +430,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const handleSave = useCallback(async () => {
     try {
-      await api().setConfig({ claudePath, defaultPermissionMode: defaultPerm });
+      await api().setConfig({ claudePath, defaultPermissionMode: defaultPerm, defaultProjectsFolder: defaultFolder });
       setStatus("Saved. Restart sessions for changes to take effect.");
     } catch (err) {
       setStatus(`Error: ${err}`);
     }
-  }, [claudePath, defaultPerm]);
+  }, [claudePath, defaultPerm, defaultFolder]);
+
+  const handleBrowseFolder = useCallback(async () => {
+    const folder = await api().pickFolder();
+    if (folder) setDefaultFolder(folder);
+  }, []);
 
   if (!open) return null;
 
@@ -469,6 +476,23 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <label className="setting-label">
               Default tool execution policy
               <PolicyPicker items={PERM_ITEMS} value={defaultPerm} onChange={setDefaultPerm} />
+            </label>
+            <label className="setting-label">
+              Default projects folder
+              <div className="settings-browse-row">
+                <input
+                  className="setting-input"
+                  type="text"
+                  value={defaultFolder}
+                  onChange={(e) => setDefaultFolder(e.target.value)}
+                  placeholder="Not set — will use folder picker"
+                  spellCheck={false}
+                />
+                <button className="browse-btn" onClick={handleBrowseFolder} type="button">Browse</button>
+              </div>
+              <span className="setting-hint">
+                New sessions create a subfolder here. Leave empty to always use folder picker.
+              </span>
             </label>
           </div>
           {status && <div className="setting-status">{status}</div>}

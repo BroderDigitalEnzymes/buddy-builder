@@ -6,6 +6,7 @@ import type { AppConfig } from "../ipc.js";
 const DEFAULTS: AppConfig = {
   claudePath: "claude",
   defaultPermissionMode: "default",
+  defaultProjectsFolder: "",
 };
 
 function configPath(): string {

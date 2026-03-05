@@ -165,6 +165,11 @@ function setupIpc(mgr: SessionManager): void {
     getSessionEntries: ({ sessionId }) => mgr.getEntries(sessionId),
     getConfig:         () => loadConfig(),
     setConfig:         (config) => { saveConfig(config); },
+    createProjectFolder: ({ parentDir, folderName }) => {
+      const dir = path.join(parentDir, folderName);
+      fs.mkdirSync(dir, { recursive: true });
+      return dir;
+    },
     pickFolder: async () => {
       const win = BrowserWindow.getFocusedWindow();
       if (!win) return null;

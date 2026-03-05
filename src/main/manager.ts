@@ -237,7 +237,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const policy: ToolPolicyConfig = { preset: initialPreset, blockedTools: [] };
       const managed: ManagedSession = {
         id,
-        name: `Session ${counter}`,
+        name: options?.name ?? `Session ${counter}`,
         projectName: cwd ?? "(new)",
         session,
         claudeSessionId: null,

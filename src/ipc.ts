@@ -83,6 +83,7 @@ export const PRESET_BLOCKED_TOOLS: Record<PolicyPreset, readonly string[]> = {
 export type CreateSessionOptions = {
   readonly permissionMode?: PermissionMode;
   readonly cwd?: string;
+  readonly name?: string;
 };
 
 /** Map a UI permission mode to an initial tool policy preset. */
@@ -120,6 +121,7 @@ export type AskUserQuestionInput = {
 export type AppConfig = {
   claudePath: string;
   defaultPermissionMode: PermissionMode;
+  defaultProjectsFolder: string;
 };
 
 /** Invoke channels: renderer calls, main handles. */
@@ -141,6 +143,7 @@ export type InvokeContract = {
   getConfig:         { in: undefined; out: AppConfig };
   setConfig:         { in: AppConfig; out: void };
   pickFolder:        { in: undefined; out: string | null };
+  createProjectFolder: { in: { parentDir: string; folderName: string }; out: string };
   takeScreenshot:    { in: { filename?: string } | undefined; out: string };
   popOutSession:     { in: { sessionId: string }; out: void };
   popInSession:      { in: { sessionId: string }; out: void };
@@ -205,7 +208,7 @@ export const INVOKE_CHANNELS = [
   "createSession", "sendMessage", "answerQuestion", "interruptSession", "killSession",
   "listSessions", "updatePolicy", "getPolicy",
   "renameSession", "setFavorite", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
-  "getConfig", "setConfig", "pickFolder", "takeScreenshot",
+  "getConfig", "setConfig", "pickFolder", "createProjectFolder", "takeScreenshot",
   "popOutSession", "popInSession", "focusPopout",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];

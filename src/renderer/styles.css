@@ -549,9 +549,16 @@ body {
 
 /* #perm-mode replaced by PolicyPicker component */
 
-#new-session {
-  padding: 5px 12px;
+.split-button {
+  position: relative;
+  display: flex;
   border-radius: var(--radius);
+  overflow: visible;
+}
+
+.split-main {
+  padding: 5px 10px;
+  border-radius: var(--radius) 0 0 var(--radius);
   background: var(--accent);
   border: none;
   color: #fff;
@@ -563,7 +570,52 @@ body {
   white-space: nowrap;
 }
 
-#new-session:hover { opacity: 0.85; }
+.split-main:hover { opacity: 0.85; }
+
+.split-arrow {
+  padding: 5px 6px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--accent);
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.25);
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+
+.split-arrow:hover { opacity: 0.85; }
+
+.split-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 100;
+  min-width: 150px;
+}
+
+.split-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.split-dropdown button:hover {
+  background: var(--bg-2);
+}
 
 #settings-btn {
   display: flex;
@@ -2794,3 +2846,133 @@ body {
   border: 1px solid var(--border);
   object-fit: contain;
 }
+
+/* ═══ Naming modal ═════════════════════════════════════════════ */
+
+.naming-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.naming-modal {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.naming-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.naming-modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.naming-modal-input:focus {
+  border-color: var(--accent);
+}
+
+.naming-modal-preview {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.naming-folder-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-family: var(--font-mono, monospace);
+}
+
+.naming-full-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.naming-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.naming-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.naming-btn-cancel {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.naming-btn-cancel:hover { background: var(--bg-2); }
+
+.naming-btn-ok {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.naming-btn-ok:hover { opacity: 0.85; }
+.naming-btn-ok:disabled { opacity: 0.4; cursor: default; }
+
+/* ═══ Settings browse row ═══════════════════════════════════════ */
+
+.settings-browse-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-browse-row .setting-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.browse-btn:hover { background: var(--bg-3, var(--bg-1)); }
