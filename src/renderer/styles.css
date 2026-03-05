@@ -895,6 +895,9 @@ body {
 /* icon variant: right-align dropdown */
 .policy-picker-wrap.icon .policy-dropdown { left: auto; right: 0; }
 
+/* sidebar: open upward (picker is at bottom of screen) */
+#sidebar-actions .policy-dropdown { top: auto; bottom: calc(100% + 4px); }
+
 /* ═══ Chat area ═════════════════════════════════════════════════ */
 
 #chat {
