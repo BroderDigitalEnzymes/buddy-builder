@@ -202,6 +202,9 @@ body {
 }
 
 .panel-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 5px 12px 3px;
   font-size: 10px;
   font-weight: 700;
@@ -210,6 +213,25 @@ body {
   color: var(--text-muted);
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.panel-view-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s, color 0.1s;
+}
+
+.panel-view-toggle:hover {
+  background: var(--hover-bg);
+  color: var(--text);
 }
 
 .panel-scroll {
@@ -1206,6 +1228,30 @@ body {
   background: var(--bg-2);
   border-radius: 12px;
   display: inline-block;
+}
+
+.msg-compact {
+  font-size: 12px;
+  color: var(--accent);
+  text-align: center;
+  padding: 4px 14px;
+  background: var(--accent-bg);
+  border: 1px solid rgba(29, 155, 209, 0.2);
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  animation: compact-appear 0.4s ease-out;
+}
+
+.compact-icon {
+  flex-shrink: 0;
+  stroke: var(--accent);
+}
+
+@keyframes compact-appear {
+  from { opacity: 0; transform: scaleX(0.8); }
+  to   { opacity: 1; transform: scaleX(1); }
 }
 
 /* ─── Result divider ─── */
@@ -2284,10 +2330,63 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+.input-row-wrap {
+  position: relative;
+}
+
 .input-row {
   display: flex;
   gap: 10px;
   padding-top: 12px;
+}
+
+/* ─── Slash command autocomplete ─── */
+
+.slash-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+  padding: 4px;
+  animation: dropdown-in 0.12s ease-out;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.slash-autocomplete-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.1s;
+  text-align: left;
+}
+
+.slash-autocomplete-item:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.slash-autocomplete-item.active {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.slash-autocomplete-cmd {
+  font-weight: 500;
 }
 
 #input {

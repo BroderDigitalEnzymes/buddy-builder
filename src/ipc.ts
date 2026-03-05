@@ -21,6 +21,7 @@ export type ChatEntry =
   | { kind: "text"; text: string; streaming?: boolean; ts: number }
   | { kind: "tool"; toolName: string; toolUseId: string; status: "running" | "done" | "blocked"; detail: string; toolInput: Record<string, unknown>; toolResult?: string; children?: ChatEntry[]; ts: number }
   | { kind: "result"; cost: number; turns: number; durationMs: number; ts: number }
+  | { kind: "compact"; trigger: string; preTokens: number | null; ts: number }
   | { kind: "system"; text: string; ts: number };
 
 // ─── Session Event (main → renderer, validated by zod in schema.ts) ─
@@ -45,6 +46,7 @@ export type SessionEvent =
   | { kind: "warn"; sessionId: string; message: string }
   | { kind: "error"; sessionId: string; message: string }
   | { kind: "exit"; sessionId: string; code: number | null }
+  | { kind: "compact"; sessionId: string; trigger: string; preTokens: number | null }
   | { kind: "nameChanged"; sessionId: string; name: string }
   | { kind: "popoutChanged"; sessionId: string; poppedOut: boolean };
 

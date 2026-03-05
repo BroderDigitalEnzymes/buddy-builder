@@ -129,6 +129,10 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
     forward({ kind: "notification", sessionId: id, title: ev.title, body: ev.body });
   });
 
+  session.on("compact", (ev: { trigger: string; preTokens: number | null }) => {
+    forward({ kind: "compact", sessionId: id, trigger: ev.trigger, preTokens: ev.preTokens });
+  });
+
   session.on("stateChange", (ev) => {
     sink({ kind: "stateChange", sessionId: id, from: ev.from, to: ev.to });
   });

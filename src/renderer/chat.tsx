@@ -6,6 +6,14 @@ import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
 import { getSender, api, type Sender } from "./utils.js";
 import { useClickOutside } from "./hooks.js";
 
+// ─── Default slash commands (fallback when init hasn't fired yet) ─
+
+const DEFAULT_SLASH_COMMANDS = [
+  "compact", "context", "cost", "init", "review",
+  "pr-comments", "release-notes", "security-review",
+  "insights", "simplify", "batch", "debug", "extra-usage",
+];
+
 // ─── Helpers: formatting ────────────────────────────────────────
 
 function formatTokens(n: number): string {
@@ -208,6 +216,21 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowPr
     return (
       <div className="msg-row msg-row-system">
         <div className="msg-system-text">{entry.text}</div>
+      </div>
+    );
+  }
+
+  // Compact messages: styled compaction pill
+  if (entry.kind === "compact") {
+    const tokenLabel = entry.preTokens ? ` · ${formatTokens(entry.preTokens)} tokens` : "";
+    return (
+      <div className="msg-row msg-row-system">
+        <div className="msg-compact">
+          <svg className="compact-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M4 2v4l4 2-4 2v4" /><path d="M12 2v4l-4 2 4 2v4" />
+          </svg>
+          Context compacted ({entry.trigger}){tokenLabel}
+        </div>
       </div>
     );
   }
@@ -556,11 +579,12 @@ type ChatHeaderProps = {
   session: SessionData | null;
   onSetPreset: (p: PolicyPreset) => void;
   onToggleFavorite: (id: string) => void;
+  onOpenTerminal?: (id: string) => void;
   onPopOut?: (id: string) => void;
   onPopIn?: () => void;
 };
 
-export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onPopOut, onPopIn }: ChatHeaderProps) {
+export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onOpenTerminal, onPopOut, onPopIn }: ChatHeaderProps) {
   if (!session) {
     return <div id="chat-header" />;
   }
@@ -589,6 +613,17 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
           </span>
         )}
         <SessionInfoButton session={session} />
+        {onOpenTerminal && session.claudeSessionId && (
+          <button
+            className="chat-header-icon-btn"
+            title="Open in terminal"
+            onClick={() => onOpenTerminal(session.id)}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3l5 4-5 4" /><line x1="9" y1="12" x2="14" y2="12" />
+            </svg>
+          </button>
+        )}
         {onPopOut && session && (
           <button
             className="chat-header-icon-btn popout-btn"
@@ -635,6 +670,39 @@ function fileToImageData(file: File): Promise<ImageData | null> {
   });
 }
 
+// ─── Slash command autocomplete ──────────────────────────────────
+
+type SlashAutocompleteProps = {
+  commands: string[];
+  selectedIndex: number;
+  onSelect: (command: string) => void;
+};
+
+function SlashAutocomplete({ commands, selectedIndex, onSelect }: SlashAutocompleteProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = listRef.current?.children[selectedIndex] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
+
+  if (commands.length === 0) return null;
+
+  return (
+    <div className="slash-autocomplete" ref={listRef}>
+      {commands.map((cmd, i) => (
+        <button
+          key={cmd}
+          className={`slash-autocomplete-item ${i === selectedIndex ? "active" : ""}`}
+          onMouseDown={(e) => { e.preventDefault(); onSelect(cmd); }}
+        >
+          <span className="slash-autocomplete-cmd">/{cmd}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Input bar ───────────────────────────────────────────────────
 
 type InputBarProps = {
@@ -655,42 +723,26 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
   const lastEscapeRef = useRef(0);
   const [escapeHint, setEscapeHint] = useState(false);
 
-  // Autocomplete state
-  const [acOpen, setAcOpen] = useState(false);
-  const [acIndex, setAcIndex] = useState(0);
-  const [acFilter, setAcFilter] = useState("");
-  const acRef = useRef<HTMLDivElement>(null);
+  // Slash command autocomplete state
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashFilter, setSlashFilter] = useState("");
+  const [slashIndex, setSlashIndex] = useState(0);
 
-  useClickOutside(acRef, () => setAcOpen(false), acOpen);
+  const filteredCommands = useMemo(() => {
+    if (!slashOpen) return [];
+    const cmds = slashCommands.length > 0 ? slashCommands : DEFAULT_SLASH_COMMANDS;
+    const prefix = slashFilter.toLowerCase();
+    return cmds.filter((cmd) => cmd.toLowerCase().startsWith(prefix));
+  }, [slashOpen, slashFilter, slashCommands]);
 
-  const acMatches = useMemo(() => {
-    if (!acOpen || slashCommands.length === 0) return [];
-    const lc = acFilter.toLowerCase();
-    return slashCommands.filter((c) => c.toLowerCase().includes(lc));
-  }, [acOpen, acFilter, slashCommands]);
-
-  // Close autocomplete when matches empty
-  useEffect(() => {
-    if (acOpen && acMatches.length === 0) setAcOpen(false);
-  }, [acOpen, acMatches.length]);
-
-  // Auto-scroll active item into view
-  useEffect(() => {
-    if (!acOpen) return;
-    const container = acRef.current;
-    if (!container) return;
-    const item = container.children[acIndex] as HTMLElement | undefined;
-    item?.scrollIntoView({ block: "nearest" });
-  }, [acOpen, acIndex]);
-
-  const selectAcItem = useCallback((cmd: string) => {
+  const selectSlashCommand = useCallback((cmd: string) => {
     const el = ref.current;
     if (!el) return;
-    el.value = cmd + " ";
+    el.value = `/${cmd} `;
+    el.selectionStart = el.selectionEnd = el.value.length;
+    setSlashOpen(false);
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
-    setAcOpen(false);
-    el.focus();
   }, []);
 
   const handleSend = useCallback(() => {
@@ -711,26 +763,26 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
   }, [disabled]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Autocomplete navigation
-    if (acOpen && acMatches.length > 0) {
+    // Slash autocomplete navigation
+    if (slashOpen && filteredCommands.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setAcIndex((i) => (i + 1) % acMatches.length);
+        setSlashIndex((i) => Math.min(i + 1, filteredCommands.length - 1));
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setAcIndex((i) => (i - 1 + acMatches.length) % acMatches.length);
+        setSlashIndex((i) => Math.max(i - 1, 0));
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault();
-        selectAcItem(acMatches[acIndex]);
+        selectSlashCommand(filteredCommands[slashIndex]);
         return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        setAcOpen(false);
+        setSlashOpen(false);
         return;
       }
     }
@@ -753,25 +805,23 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
       e.preventDefault();
       handleSend();
     }
-  }, [handleSend, isBusy, onInterrupt, acOpen, acMatches, acIndex, selectAcItem]);
+  }, [handleSend, isBusy, onInterrupt, slashOpen, filteredCommands, slashIndex, selectSlashCommand]);
 
   const handleInput = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
-
-    // Autocomplete trigger: value starts with /
-    const val = el.value;
-    if (val.startsWith("/") && slashCommands.length > 0) {
-      const filter = val.slice(1).split(/\s/)[0] || "";
-      setAcFilter(filter);
-      setAcIndex(0);
-      setAcOpen(true);
+    // Slash autocomplete trigger
+    const value = el.value;
+    if (value.startsWith("/") && !value.includes(" ")) {
+      setSlashOpen(true);
+      setSlashFilter(value.slice(1));
+      setSlashIndex(0);
     } else {
-      setAcOpen(false);
+      setSlashOpen(false);
     }
-  }, [slashCommands]);
+  }, []);
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -816,20 +866,6 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
 
   return (
     <div id="input-bar">
-      {acOpen && acMatches.length > 0 && (
-        <div className="ac-dropdown" ref={acRef}>
-          {acMatches.map((cmd, i) => (
-            <div
-              key={cmd}
-              className={`ac-item${i === acIndex ? " ac-item-active" : ""}`}
-              onMouseDown={(e) => { e.preventDefault(); selectAcItem(cmd); }}
-              onMouseEnter={() => setAcIndex(i)}
-            >
-              {cmd}
-            </div>
-          ))}
-        </div>
-      )}
       {pendingImages.length > 0 && (
         <div className="image-preview-bar">
           {pendingImages.map((img, i) => (
@@ -840,20 +876,29 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
           ))}
         </div>
       )}
-      <div className="input-row">
-        <textarea
-          ref={ref}
-          id="input"
-          placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : isBusy ? "Type to queue a message..." : "Message Claude..."}
-          rows={1}
-          disabled={disabled}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          onPaste={handlePaste}
-        />
-        <button id="send" disabled={disabled} onClick={handleSend}>
-          {queueCount > 0 ? `Send +${queueCount}` : "Send"}
-        </button>
+      <div className="input-row-wrap">
+        {slashOpen && filteredCommands.length > 0 && (
+          <SlashAutocomplete
+            commands={filteredCommands}
+            selectedIndex={slashIndex}
+            onSelect={selectSlashCommand}
+          />
+        )}
+        <div className="input-row">
+          <textarea
+            ref={ref}
+            id="input"
+            placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : isBusy ? "Type to queue a message..." : "Message Claude..."}
+            rows={1}
+            disabled={disabled}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            onPaste={handlePaste}
+          />
+          <button id="send" disabled={disabled} onClick={handleSend}>
+            {queueCount > 0 ? `Send +${queueCount}` : "Send"}
+          </button>
+        </div>
       </div>
       {escapeHint && <div className="escape-hint">Press Esc again to stop</div>}
       {isBusy && queueCount > 0 && <div className="queue-hint">{queueCount} queued</div>}

@@ -49,6 +49,9 @@ export type SessionEventMap = {
   // CLI system messages (slash command output, etc.)
   systemMessage: string;
 
+  // Compact boundary
+  compact: { trigger: string; preTokens: number | null };
+
   // Notifications (from hook)
   notification: { title?: string; body: string };
 
@@ -247,6 +250,11 @@ export async function createSession(
           if ("model" in msg) {
             sessionId = msg.session_id;
             emitter.emit("ready", msg as InitMessage);
+          } else if (msg.subtype === "compact_boundary") {
+            emitter.emit("compact", {
+              trigger: (msg as any).compactMetadata?.trigger ?? "auto",
+              preTokens: (msg as any).compactMetadata?.preTokens ?? null,
+            });
           } else {
             const text = extractSystemText(msg as SystemEvent);
             if (text) emitter.emit("systemMessage", text);

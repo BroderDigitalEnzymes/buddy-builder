@@ -165,6 +165,15 @@ export function applyEvent(entries: ChatEntry[], event: SessionEvent): boolean {
       entries.push({ kind: "system", text: event.title ? `${event.title}: ${event.body}` : event.body, ts: now });
       return true;
 
+    case "compact":
+      entries.push({
+        kind: "compact",
+        trigger: event.trigger,
+        preTokens: event.preTokens,
+        ts: now,
+      });
+      return true;
+
     case "rateLimit":
     case "usage":
     case "stateChange":

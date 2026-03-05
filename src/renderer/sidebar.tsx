@@ -438,7 +438,9 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
     });
   }, []);
   const [search, setSearch] = useState("");
+  const [historyMode, setHistoryMode] = useState<"flat" | "tree">("flat");
   const [liveExpanded, setLiveExpanded] = useState<Set<string>>(new Set());
+  const [historyExpanded, setHistoryExpanded] = useState<Set<string>>(new Set());
   const panelsRef = useRef<HTMLDivElement>(null);
   const { value: topRatio, onMouseDown } = useDrag({
     initial: 0.3, min: 0.08, max: 0.92, cursor: "row-resize",
@@ -479,8 +481,19 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
     return dead.slice(0, HISTORY_LIMIT);
   }, [sessions, q, pinnedIds]);
 
+  const historyForTree = useMemo(() => {
+    let dead = sessions.filter((s) => s.state === "dead");
+    if (q) dead = dead.filter(s => fuzzyMatch(q, s.name) || fuzzyMatch(q, s.cwd ?? "") || fuzzyMatch(q, s.projectName));
+    return dead;
+  }, [sessions, q]);
+
+  const historyTree = useMemo(() => buildDirTree(historyForTree, ""), [historyForTree]);
+
   const toggleLive = useCallback((p: string) => {
     setLiveExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
+  }, []);
+  const toggleHistory = useCallback((p: string) => {
+    setHistoryExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
   }, []);
   const handleCreateInDir = useCallback((cwd: string) => onCreate(perm, cwd), [perm, onCreate]);
   const handleBrowse = useCallback(async () => {
@@ -528,7 +541,24 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
           </div>
           <div className="sidebar-drag" onMouseDown={onMouseDown} />
           <div className="sidebar-panel" style={{ flex: 1 }}>
-            <div className="panel-label">History ({pinnedSessions.length + historySessions.length})</div>
+            <div className="panel-label">
+              History
+              <button
+                className="panel-view-toggle"
+                title={historyMode === "flat" ? "Switch to tree view" : "Switch to flat view"}
+                onClick={() => setHistoryMode(m => m === "flat" ? "tree" : "flat")}
+              >
+                {historyMode === "flat" ? (
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 2v12" /><path d="M6 6h8" /><path d="M6 10h6" /><path d="M2 6h4" /><path d="M2 10h4" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M2 4h12" /><path d="M2 8h12" /><path d="M2 12h12" />
+                  </svg>
+                )}
+              </button>
+            </div>
             <div className="panel-scroll">
               {pinnedSessions.length > 0 && pinnedSessions.map(s => (
                 <SessionItem
@@ -547,26 +577,43 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                   onToggleFavorite={onToggleFavorite}
                 />
               ))}
-              {pinnedSessions.length > 0 && historySessions.length > 0 && (
+              {pinnedSessions.length > 0 && (historySessions.length > 0 || historyForTree.length > 0) && (
                 <div className="pinned-divider" />
               )}
-              {historySessions.length === 0 && pinnedSessions.length === 0 ? (
-                <div className="panel-empty">No sessions found</div>
-              ) : historySessions.map(s => (
-                <SessionItem
-                  key={s.id}
-                  session={s}
-                  depth={0}
+              {historyMode === "tree" ? (
+                <DirTreeList
+                  tree={historyTree}
                   activeId={activeId}
                   poppedOutIds={poppedOutIds}
-                  live={false}
-                  timeLabel={relativeTime(s.lastActiveAt)}
+                  expandedPaths={historyExpanded}
+                  isSearching={isSearching}
+                  onToggle={toggleHistory}
                   onSwitch={onSwitch}
                   onKill={onKill}
                   onDelete={onDelete}
                   onRename={onRename}
+                  onCreate={handleCreateInDir}
+                  live={false}
                 />
-              ))}
+              ) : (
+                historySessions.length === 0 && pinnedSessions.length === 0 ? (
+                  <div className="panel-empty">No sessions found</div>
+                ) : historySessions.map(s => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    depth={0}
+                    activeId={activeId}
+                    poppedOutIds={poppedOutIds}
+                    live={false}
+                    timeLabel={relativeTime(s.lastActiveAt)}
+                    onSwitch={onSwitch}
+                    onKill={onKill}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                  />
+                ))
+              )}
             </div>
           </div>
         </div>

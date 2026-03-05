@@ -91,6 +91,7 @@ function App() {
         session={activeSession}
         onSetPreset={handlePreset}
         onToggleFavorite={handleToggleFavorite}
+        onOpenTerminal={resumeInTerminal}
         onPopOut={IS_POPOUT ? undefined : handlePopOut}
         onPopIn={IS_POPOUT ? handlePopIn : undefined}
       />
