@@ -29,7 +29,8 @@ export type ChatEntry =
 export type SessionEvent =
   | { kind: "ready"; sessionId: string; model: string; tools: string[];
       mcpServers?: { name: string; status: string }[];
-      claudeCodeVersion?: string; cwd?: string }
+      claudeCodeVersion?: string; cwd?: string;
+      slashCommands?: string[] }
   | { kind: "text"; sessionId: string; text: string; parentToolUseId?: string }
   | { kind: "textDelta"; sessionId: string; text: string; parentToolUseId?: string }
   | { kind: "toolStart"; sessionId: string; toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string }

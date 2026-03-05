@@ -90,6 +90,7 @@ function App() {
         isBusy={activeSession?.state === "busy"}
         queueCount={activeSession?.messageQueue.length ?? 0}
         showResume={showResume}
+        slashCommands={activeSession?.slashCommands ?? []}
         onSend={handleSend}
         onInterrupt={handleInterrupt}
         onResume={handleResume}

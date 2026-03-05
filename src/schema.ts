@@ -51,6 +51,7 @@ export const InitMessageSchema = z
     claude_code_version: z.string().optional(),
     agents: z.array(z.string()).optional(),
     skills: z.array(z.string()).optional(),
+    slash_commands: z.array(z.string()).optional(),
   })
   .catchall(z.unknown());
 

@@ -2227,10 +2227,63 @@ body {
   flex-shrink: 0;
 }
 
+.input-row-wrap {
+  position: relative;
+}
+
 .input-row {
   display: flex;
   gap: 10px;
   padding-top: 12px;
+}
+
+/* ─── Slash command autocomplete ─── */
+
+.slash-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+  padding: 4px;
+  animation: dropdown-in 0.12s ease-out;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.slash-autocomplete-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.1s;
+  text-align: left;
+}
+
+.slash-autocomplete-item:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.slash-autocomplete-item.active {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.slash-autocomplete-cmd {
+  font-weight: 500;
 }
 
 #input {

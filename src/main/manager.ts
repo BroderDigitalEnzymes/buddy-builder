@@ -77,6 +77,7 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
       mcpServers: init.mcp_servers as { name: string; status: string }[] | undefined,
       claudeCodeVersion: init.claude_code_version,
       cwd: init.cwd,
+      slashCommands: init.slash_commands,
     });
   });
 

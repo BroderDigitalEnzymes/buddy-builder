@@ -41,6 +41,7 @@ export type SessionData = {
   tools: string[];
   mcpServers: { name: string; status: string }[];
   claudeCodeVersion: string | null;
+  slashCommands: string[];
   // Message queue — messages sent while busy, flushed on idle
   messageQueue: { text: string; images?: ImageData[] }[];
 };
@@ -136,6 +137,7 @@ export async function loadPersistedSessions(): Promise<void> {
         tools: [],
         mcpServers: [],
         claudeCodeVersion: null,
+        slashCommands: [],
         messageQueue: [],
       });
     }
@@ -174,6 +176,7 @@ export async function createSession(permissionMode: PermissionMode, cwd?: string
       tools: [],
       mcpServers: [],
       claudeCodeVersion: null,
+      slashCommands: [],
       messageQueue: [],
     });
     state.activeId = id;
@@ -351,6 +354,7 @@ function handleEvent(event: SessionEvent): void {
       data.tools = event.tools;
       data.mcpServers = event.mcpServers ?? [];
       data.claudeCodeVersion = event.claudeCodeVersion ?? null;
+      data.slashCommands = event.slashCommands ?? [];
       if (event.cwd && !data.cwd) data.cwd = event.cwd;
       break;
     case "result":

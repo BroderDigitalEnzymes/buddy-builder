@@ -6,6 +6,14 @@ import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
 import { getSender, api, type Sender } from "./utils.js";
 import { useClickOutside } from "./hooks.js";
 
+// ─── Default slash commands (fallback when init hasn't fired yet) ─
+
+const DEFAULT_SLASH_COMMANDS = [
+  "compact", "context", "cost", "init", "review",
+  "pr-comments", "release-notes", "security-review",
+  "insights", "simplify", "batch", "debug", "extra-usage",
+];
+
 // ─── Helpers: formatting ────────────────────────────────────────
 
 function formatTokens(n: number): string {
@@ -593,6 +601,39 @@ function fileToImageData(file: File): Promise<ImageData | null> {
   });
 }
 
+// ─── Slash command autocomplete ──────────────────────────────────
+
+type SlashAutocompleteProps = {
+  commands: string[];
+  selectedIndex: number;
+  onSelect: (command: string) => void;
+};
+
+function SlashAutocomplete({ commands, selectedIndex, onSelect }: SlashAutocompleteProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = listRef.current?.children[selectedIndex] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
+
+  if (commands.length === 0) return null;
+
+  return (
+    <div className="slash-autocomplete" ref={listRef}>
+      {commands.map((cmd, i) => (
+        <button
+          key={cmd}
+          className={`slash-autocomplete-item ${i === selectedIndex ? "active" : ""}`}
+          onMouseDown={(e) => { e.preventDefault(); onSelect(cmd); }}
+        >
+          <span className="slash-autocomplete-cmd">/{cmd}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Input bar ───────────────────────────────────────────────────
 
 type InputBarProps = {
@@ -600,17 +641,40 @@ type InputBarProps = {
   isBusy: boolean;
   queueCount: number;
   showResume: boolean;
+  slashCommands: string[];
   onSend: (text: string, images?: ImageData[]) => void;
   onInterrupt: () => void;
   onResume: () => void;
   onResumeTerminal: () => void;
 };
 
-export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, showResume, onSend, onInterrupt, onResume, onResumeTerminal }: InputBarProps) {
+export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, showResume, slashCommands, onSend, onInterrupt, onResume, onResumeTerminal }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
   const lastEscapeRef = useRef(0);
   const [escapeHint, setEscapeHint] = useState(false);
+
+  // Slash command autocomplete state
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashFilter, setSlashFilter] = useState("");
+  const [slashIndex, setSlashIndex] = useState(0);
+
+  const filteredCommands = useMemo(() => {
+    if (!slashOpen) return [];
+    const cmds = slashCommands.length > 0 ? slashCommands : DEFAULT_SLASH_COMMANDS;
+    const prefix = slashFilter.toLowerCase();
+    return cmds.filter((cmd) => cmd.toLowerCase().startsWith(prefix));
+  }, [slashOpen, slashFilter, slashCommands]);
+
+  const selectSlashCommand = useCallback((cmd: string) => {
+    const el = ref.current;
+    if (!el) return;
+    el.value = `/${cmd} `;
+    el.selectionStart = el.selectionEnd = el.value.length;
+    setSlashOpen(false);
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }, []);
 
   const handleSend = useCallback(() => {
     const el = ref.current;
@@ -630,16 +694,38 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
   }, [disabled]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Slash autocomplete navigation
+    if (slashOpen && filteredCommands.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIndex((i) => Math.min(i + 1, filteredCommands.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        selectSlashCommand(filteredCommands[slashIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashOpen(false);
+        return;
+      }
+    }
+
     if (e.key === "Escape" && isBusy) {
       e.preventDefault();
       const now = Date.now();
       if (now - lastEscapeRef.current < 400) {
-        // Double-Escape → interrupt
         lastEscapeRef.current = 0;
         setEscapeHint(false);
         onInterrupt();
       } else {
-        // First Escape → show hint
         lastEscapeRef.current = now;
         setEscapeHint(true);
         setTimeout(() => setEscapeHint(false), 1500);
@@ -650,13 +736,22 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
       e.preventDefault();
       handleSend();
     }
-  }, [handleSend, isBusy, onInterrupt]);
+  }, [handleSend, isBusy, onInterrupt, slashOpen, filteredCommands, slashIndex, selectSlashCommand]);
 
   const handleInput = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
+    // Slash autocomplete trigger
+    const value = el.value;
+    if (value.startsWith("/") && !value.includes(" ")) {
+      setSlashOpen(true);
+      setSlashFilter(value.slice(1));
+      setSlashIndex(0);
+    } else {
+      setSlashOpen(false);
+    }
   }, []);
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
@@ -712,20 +807,29 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
           ))}
         </div>
       )}
-      <div className="input-row">
-        <textarea
-          ref={ref}
-          id="input"
-          placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : isBusy ? "Type to queue a message..." : "Message Claude..."}
-          rows={1}
-          disabled={disabled}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          onPaste={handlePaste}
-        />
-        <button id="send" disabled={disabled} onClick={handleSend}>
-          {queueCount > 0 ? `Send +${queueCount}` : "Send"}
-        </button>
+      <div className="input-row-wrap">
+        {slashOpen && filteredCommands.length > 0 && (
+          <SlashAutocomplete
+            commands={filteredCommands}
+            selectedIndex={slashIndex}
+            onSelect={selectSlashCommand}
+          />
+        )}
+        <div className="input-row">
+          <textarea
+            ref={ref}
+            id="input"
+            placeholder={pendingImages.length > 0 ? "Add a message about the image(s)..." : isBusy ? "Type to queue a message..." : "Message Claude..."}
+            rows={1}
+            disabled={disabled}
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            onPaste={handlePaste}
+          />
+          <button id="send" disabled={disabled} onClick={handleSend}>
+            {queueCount > 0 ? `Send +${queueCount}` : "Send"}
+          </button>
+        </div>
       </div>
       {escapeHint && <div className="escape-hint">Press Esc again to stop</div>}
       {isBusy && queueCount > 0 && <div className="queue-hint">{queueCount} queued</div>}
