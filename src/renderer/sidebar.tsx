@@ -1,8 +1,9 @@
 import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { pickFolder, type SessionData } from "./store.js";
 import type { PermissionMode } from "../ipc.js";
-import { SettingsModal } from "./chat.js";
+import { SettingsModal, PolicyPicker, PERM_ITEMS } from "./chat.js";
 import { useDrag } from "./hooks.js";
+import { api } from "./utils.js";
 
 // ─── Fuzzy match ─────────────────────────────────────────────────
 
@@ -429,6 +430,13 @@ const HISTORY_LIMIT = 20;
 export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite }: SidebarProps) {
   const [perm, setPerm] = useState<PermissionMode>("default");
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Load saved default permission mode from config
+  useEffect(() => {
+    api().getConfig().then((cfg: any) => {
+      if (cfg.defaultPermissionMode) setPerm(cfg.defaultPermissionMode);
+    });
+  }, []);
   const [search, setSearch] = useState("");
   const [liveExpanded, setLiveExpanded] = useState<Set<string>>(new Set());
   const panelsRef = useRef<HTMLDivElement>(null);
@@ -563,16 +571,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
           </div>
         </div>
         <div id="sidebar-actions">
-          <select
-            id="perm-mode"
-            value={perm}
-            onChange={(e) => setPerm(e.target.value as PermissionMode)}
-          >
-            <option value="bypassPermissions">Bypass Permissions</option>
-            <option value="acceptEdits">Auto-Accept Edits</option>
-            <option value="default">Default</option>
-            <option value="plan">Plan Only</option>
-          </select>
+          <PolicyPicker items={PERM_ITEMS} value={perm} onChange={setPerm} />
           <button id="new-session" onClick={handleBrowse} title="Browse for project folder">+ New...</button>
         </div>
         <button id="settings-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
@@ -580,7 +579,13 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
         </button>
         <div className="sidebar-resize-handle" onMouseDown={onResizeMouseDown} />
       </div>
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal open={settingsOpen} onClose={() => {
+        setSettingsOpen(false);
+        // Re-sync permission mode in case user changed the default
+        api().getConfig().then((cfg: any) => {
+          if (cfg.defaultPermissionMode) setPerm(cfg.defaultPermissionMode);
+        });
+      }} />
     </>
   );
 });

@@ -28,7 +28,8 @@ export type ChatEntry =
 export type SessionEvent =
   | { kind: "ready"; sessionId: string; model: string; tools: string[];
       mcpServers?: { name: string; status: string }[];
-      claudeCodeVersion?: string; cwd?: string }
+      claudeCodeVersion?: string; cwd?: string;
+      skills?: string[]; agents?: string[]; slashCommands?: string[] }
   | { kind: "text"; sessionId: string; text: string; parentToolUseId?: string }
   | { kind: "textDelta"; sessionId: string; text: string; parentToolUseId?: string }
   | { kind: "toolStart"; sessionId: string; toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string }
@@ -40,6 +41,7 @@ export type SessionEvent =
   | { kind: "stop"; sessionId: string; stopHookActive: boolean }
   | { kind: "notification"; sessionId: string; title?: string; body: string }
   | { kind: "stateChange"; sessionId: string; from: string; to: string }
+  | { kind: "systemMessage"; sessionId: string; text: string }
   | { kind: "warn"; sessionId: string; message: string }
   | { kind: "error"; sessionId: string; message: string }
   | { kind: "exit"; sessionId: string; code: number | null }
@@ -115,6 +117,7 @@ export type AskUserQuestionInput = {
 /** App config (persisted to disk). */
 export type AppConfig = {
   claudePath: string;
+  defaultPermissionMode: PermissionMode;
 };
 
 /** Invoke channels: renderer calls, main handles. */

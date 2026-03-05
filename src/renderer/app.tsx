@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import {
   useStoreVersion,
@@ -73,6 +73,17 @@ function App() {
     if (activeId) popInSession(activeId);
   }, [activeId]);
 
+  // Merge skills, agents, and slash commands into a single deduped sorted list
+  const mergedSlashCommands = useMemo(() => {
+    if (!activeSession) return [];
+    const all = [
+      ...activeSession.skills.map((s) => (s.startsWith("/") ? s : `/${s}`)),
+      ...activeSession.agents.map((a) => (a.startsWith("/") ? a : `/${a}`)),
+      ...activeSession.slashCommands.map((c) => (c.startsWith("/") ? c : `/${c}`)),
+    ];
+    return [...new Set(all)].sort();
+  }, [activeSession?.skills, activeSession?.agents, activeSession?.slashCommands]);
+
   // Chat area — defined once, rendered in both layouts
   const chatArea = (
     <div id="main-area">
@@ -90,6 +101,7 @@ function App() {
         isBusy={activeSession?.state === "busy"}
         queueCount={activeSession?.messageQueue.length ?? 0}
         showResume={showResume}
+        slashCommands={mergedSlashCommands}
         onSend={handleSend}
         onInterrupt={handleInterrupt}
         onResume={handleResume}

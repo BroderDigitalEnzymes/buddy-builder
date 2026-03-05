@@ -525,18 +525,7 @@ body {
   border-top: 1px solid var(--border-subtle);
 }
 
-#perm-mode {
-  flex: 1;
-  padding: 5px 8px;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-  min-width: 0;
-}
+/* #perm-mode replaced by PolicyPicker component */
 
 #new-session {
   padding: 5px 12px;
@@ -756,9 +745,56 @@ body {
 
 /* ─── Tool policy dropdown ─── */
 
-.chat-header-dropdown-wrap {
+/* ─── PolicyPicker (shared component) ─── */
+
+.policy-picker-wrap {
   position: relative;
 }
+
+.policy-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* icon-only variant (chat header) */
+.policy-picker-trigger.icon {
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  padding: 5px 8px;
+  font-size: 14px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.policy-picker-trigger.icon:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-strong);
+}
+
+/* full variant (sidebar / settings modal) */
+.policy-picker-trigger.full {
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  width: 100%;
+}
+.policy-picker-trigger.full:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.policy-picker-icon { font-size: 15px; }
+.policy-picker-label { flex: 1; text-align: left; }
+
+/* sidebar context: fill available space */
+#sidebar-actions .policy-picker-wrap { flex: 1; min-width: 0; }
 
 .chat-header-icon-btn {
   display: flex;
@@ -783,13 +819,12 @@ body {
   display: block;
 }
 
-.policy-icon { font-size: 15px; }
-.policy-chevron { font-size: 10px; color: var(--text-muted); }
+.policy-chevron { font-size: 10px; color: var(--text-muted); margin-left: auto; }
 
 .policy-dropdown {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  left: 0;
   background: var(--bg-3);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -834,6 +869,9 @@ body {
 .policy-dropdown-icon { font-size: 15px; width: 20px; text-align: center; }
 .policy-dropdown-label { flex: 1; text-align: left; }
 .policy-dropdown-check { color: var(--accent); font-size: 14px; }
+
+/* icon variant: right-align dropdown */
+.policy-picker-wrap.icon .policy-dropdown { left: auto; right: 0; }
 
 /* ═══ Chat area ═════════════════════════════════════════════════ */
 
@@ -2201,6 +2239,49 @@ body {
   background: var(--bg-0);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
+}
+
+/* ─── Slash command autocomplete ─── */
+
+.ac-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 20px;
+  right: 20px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 60;
+  padding: 4px;
+  animation: dropdown-up 0.12s ease-out;
+}
+
+.ac-item {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-item:hover { background: var(--hover-bg); }
+
+.ac-item-active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+@keyframes dropdown-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .input-row {
@@ -2372,6 +2453,8 @@ body {
   position: relative;
   overflow: hidden;
 }
+
+.modal.settings-modal { overflow: visible; }
 
 .modal-close {
   position: absolute;

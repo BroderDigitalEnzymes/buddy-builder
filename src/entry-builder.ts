@@ -157,6 +157,10 @@ export function applyEvent(entries: ChatEntry[], event: SessionEvent): boolean {
       }
       return false;
 
+    case "systemMessage":
+      entries.push({ kind: "system", text: event.text, ts: now });
+      return true;
+
     case "notification":
       entries.push({ kind: "system", text: event.title ? `${event.title}: ${event.body}` : event.body, ts: now });
       return true;

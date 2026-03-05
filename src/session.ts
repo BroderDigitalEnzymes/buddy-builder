@@ -19,6 +19,7 @@ import {
   type PreToolUsePayload,
   type PostToolUsePayload,
   type StopPayload,
+  type SystemEvent,
 } from "./schema.js";
 import type { ImageData } from "./ipc.js";
 
@@ -44,6 +45,9 @@ export type SessionEventMap = {
 
   // Claude stopped generating
   stop: { stopHookActive: boolean; lastMessage: string };
+
+  // CLI system messages (slash command output, etc.)
+  systemMessage: string;
 
   // Notifications (from hook)
   notification: { title?: string; body: string };
@@ -113,6 +117,16 @@ function extractText(msg: AssistantMessage): string {
     .filter((b): b is TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
+}
+
+function extractSystemText(msg: SystemEvent): string {
+  const m = msg as Record<string, unknown>;
+  if (typeof m.message === "string" && m.message) return m.message;
+  if (typeof m.content === "string" && m.content) return m.content;
+  // Filter out noisy subtypes that don't need display
+  const silent = new Set(["init"]);
+  if (silent.has(msg.subtype)) return "";
+  return `/${msg.subtype}`;
 }
 
 function extractToolUses(msg: AssistantMessage): ToolUseBlock[] {
@@ -230,9 +244,13 @@ export async function createSession(
     (msg) => {
       switch (msg.type) {
         case "system":
-          if (!("model" in msg)) break; // skip non-init system messages
-          sessionId = msg.session_id;
-          emitter.emit("ready", msg as InitMessage);
+          if ("model" in msg) {
+            sessionId = msg.session_id;
+            emitter.emit("ready", msg as InitMessage);
+          } else {
+            const text = extractSystemText(msg as SystemEvent);
+            if (text) emitter.emit("systemMessage", text);
+          }
           break;
 
         case "assistant": {

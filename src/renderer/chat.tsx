@@ -1,7 +1,7 @@
 import React, { memo, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import { Marked } from "marked";
 import type { SessionData } from "./store.js";
-import type { ChatEntry, ImageData, PolicyPreset } from "../ipc.js";
+import type { ChatEntry, ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
 import { getSender, api, type Sender } from "./utils.js";
 import { useClickOutside } from "./hooks.js";
@@ -322,6 +322,65 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
   );
 }
 
+// ─── Shared PolicyPicker component ──────────────────────────────
+
+export type PickerItem<T extends string> = { value: T; label: string; icon: string };
+
+export const PRESET_ITEMS: PickerItem<PolicyPreset>[] = [
+  { value: "unrestricted", label: "Unrestricted",  icon: "\u26A0" },
+  { value: "allow-edits",  label: "Allow Edits",   icon: "\u270E" },
+  { value: "no-writes",    label: "No Writes",     icon: "\u{1F6E1}" },
+  { value: "read-only",    label: "Read Only",     icon: "\u{1F512}" },
+];
+
+export const PERM_ITEMS: PickerItem<PermissionMode>[] = [
+  { value: "bypassPermissions", label: "Bypass Permissions",  icon: "\u26A0" },
+  { value: "acceptEdits",       label: "Auto-Accept Edits",   icon: "\u270E" },
+  { value: "default",           label: "Default",             icon: "\u{1F6E1}" },
+  { value: "plan",              label: "Plan Only",           icon: "\u{1F512}" },
+];
+
+type PolicyPickerProps<T extends string> = {
+  items: PickerItem<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  /** "icon" = compact icon-only trigger (chat header), "full" = icon + label trigger (sidebar/settings) */
+  variant?: "icon" | "full";
+};
+
+export function PolicyPicker<T extends string>({ items, value, onChange, variant = "full" }: PolicyPickerProps<T>) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
+
+  const current = items.find((i) => i.value === value);
+
+  return (
+    <div className={`policy-picker-wrap ${variant}`} ref={ref}>
+      <button className={`policy-picker-trigger ${variant}`} onClick={() => setOpen((v) => !v)} title="Tool policy">
+        <span className="policy-picker-icon">{current?.icon}</span>
+        {variant === "full" && <span className="policy-picker-label">{current?.label}</span>}
+        <span className="policy-chevron">{"\u25BE"}</span>
+      </button>
+      {open && (
+        <div className="policy-dropdown">
+          {items.map((item) => (
+            <button
+              key={item.value}
+              className={`policy-dropdown-item ${item.value === value ? "active" : ""}`}
+              onClick={() => { onChange(item.value); setOpen(false); }}
+            >
+              <span className="policy-dropdown-icon">{item.icon}</span>
+              <span className="policy-dropdown-label">{item.label}</span>
+              {item.value === value && <span className="policy-dropdown-check">{"\u2713"}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Settings modal ──────────────────────────────────────────────
 
 type SettingsModalProps = {
@@ -331,23 +390,27 @@ type SettingsModalProps = {
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [claudePath, setClaudePath] = useState("");
+  const [defaultPerm, setDefaultPerm] = useState<PermissionMode>("default");
   const [status, setStatus] = useState("");
 
   useEffect(() => {
     if (open) {
-      api().getConfig().then((cfg: any) => setClaudePath(cfg.claudePath));
+      api().getConfig().then((cfg: any) => {
+        setClaudePath(cfg.claudePath);
+        setDefaultPerm(cfg.defaultPermissionMode ?? "default");
+      });
       setStatus("");
     }
   }, [open]);
 
   const handleSave = useCallback(async () => {
     try {
-      await api().setConfig({ claudePath });
+      await api().setConfig({ claudePath, defaultPermissionMode: defaultPerm });
       setStatus("Saved. Restart sessions for changes to take effect.");
     } catch (err) {
       setStatus(`Error: ${err}`);
     }
-  }, [claudePath]);
+  }, [claudePath, defaultPerm]);
 
   if (!open) return null;
 
@@ -378,6 +441,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </span>
             </label>
           </div>
+          <div className="settings-section">
+            <div className="settings-section-title">Defaults</div>
+            <label className="setting-label">
+              Default tool execution policy
+              <PolicyPicker items={PERM_ITEMS} value={defaultPerm} onChange={setDefaultPerm} />
+            </label>
+          </div>
           {status && <div className="setting-status">{status}</div>}
         </div>
         <div className="modal-footer">
@@ -391,20 +461,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
 // ─── Chat header (Slack-style) ───────────────────────────────────
 
-const PRESETS: PolicyPreset[] = ["unrestricted", "allow-edits", "no-writes", "read-only"];
-const PRESET_LABELS: Record<PolicyPreset, string> = {
-  "unrestricted": "Unrestricted",
-  "allow-edits": "Allow Edits",
-  "no-writes": "No Writes",
-  "read-only": "Read Only",
-};
-
-const PRESET_ICONS: Record<PolicyPreset, string> = {
-  "unrestricted": "\u26A0",
-  "allow-edits": "\u270E",
-  "no-writes": "\u{1F6E1}",
-  "read-only": "\u{1F512}",
-};
+// PRESET_ITEMS and PolicyPicker are defined above in the shared section.
 
 // ─── Session info popover ────────────────────────────────────────
 
@@ -414,7 +471,7 @@ function SessionInfoButton({ session }: { session: SessionData }) {
 
   useClickOutside(ref, () => setOpen(false), open);
 
-  const hasInfo = session.model || session.tools.length > 0 || session.mcpServers.length > 0 || session.claudeCodeVersion;
+  const hasInfo = session.model || session.tools.length > 0 || session.mcpServers.length > 0 || session.claudeCodeVersion || session.skills.length > 0 || session.agents.length > 0 || session.slashCommands.length > 0;
   if (!hasInfo) return null;
 
   return (
@@ -459,6 +516,36 @@ function SessionInfoButton({ session }: { session: SessionData }) {
               ))}
             </>
           )}
+          {session.skills.length > 0 && (
+            <>
+              <div className="info-row">
+                <span className="info-label">Skills ({session.skills.length})</span>
+              </div>
+              <div className="info-tool-list">
+                {session.skills.map((s) => <span key={s} className="info-tool-tag">/{s}</span>)}
+              </div>
+            </>
+          )}
+          {session.agents.length > 0 && (
+            <>
+              <div className="info-row">
+                <span className="info-label">Agents ({session.agents.length})</span>
+              </div>
+              <div className="info-tool-list">
+                {session.agents.map((a) => <span key={a} className="info-tool-tag">{a}</span>)}
+              </div>
+            </>
+          )}
+          {session.slashCommands.length > 0 && (
+            <>
+              <div className="info-row">
+                <span className="info-label">Commands ({session.slashCommands.length})</span>
+              </div>
+              <div className="info-tool-list">
+                {session.slashCommands.map((c) => <span key={c} className="info-tool-tag">/{c}</span>)}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -474,11 +561,6 @@ type ChatHeaderProps = {
 };
 
 export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onPopOut, onPopIn }: ChatHeaderProps) {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useClickOutside(dropdownRef, () => setDropdownOpen(false), dropdownOpen);
-
   if (!session) {
     return <div id="chat-header" />;
   }
@@ -529,32 +611,7 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
             </svg>
           </button>
         )}
-        <div className="chat-header-dropdown-wrap" ref={dropdownRef}>
-          <button
-            className="chat-header-icon-btn"
-            title="Tool policy"
-            onClick={() => setDropdownOpen((v) => !v)}
-          >
-            <span className="policy-icon">{PRESET_ICONS[session.policyPreset]}</span>
-            <span className="policy-chevron">{"\u25BE"}</span>
-          </button>
-          {dropdownOpen && (
-            <div className="policy-dropdown">
-              {PRESETS.map((p) => (
-                <button
-                  key={p}
-                  className={`policy-dropdown-item ${p === session.policyPreset ? "active" : ""}`}
-                  data-preset={p}
-                  onClick={() => { onSetPreset(p); setDropdownOpen(false); }}
-                >
-                  <span className="policy-dropdown-icon">{PRESET_ICONS[p]}</span>
-                  <span className="policy-dropdown-label">{PRESET_LABELS[p]}</span>
-                  {p === session.policyPreset && <span className="policy-dropdown-check">{"\u2713"}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <PolicyPicker items={PRESET_ITEMS} value={session.policyPreset} onChange={onSetPreset} variant="icon" />
       </div>
     </div>
   );
@@ -585,17 +642,56 @@ type InputBarProps = {
   isBusy: boolean;
   queueCount: number;
   showResume: boolean;
+  slashCommands: string[];
   onSend: (text: string, images?: ImageData[]) => void;
   onInterrupt: () => void;
   onResume: () => void;
   onResumeTerminal: () => void;
 };
 
-export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, showResume, onSend, onInterrupt, onResume, onResumeTerminal }: InputBarProps) {
+export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, showResume, slashCommands, onSend, onInterrupt, onResume, onResumeTerminal }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
   const lastEscapeRef = useRef(0);
   const [escapeHint, setEscapeHint] = useState(false);
+
+  // Autocomplete state
+  const [acOpen, setAcOpen] = useState(false);
+  const [acIndex, setAcIndex] = useState(0);
+  const [acFilter, setAcFilter] = useState("");
+  const acRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(acRef, () => setAcOpen(false), acOpen);
+
+  const acMatches = useMemo(() => {
+    if (!acOpen || slashCommands.length === 0) return [];
+    const lc = acFilter.toLowerCase();
+    return slashCommands.filter((c) => c.toLowerCase().includes(lc));
+  }, [acOpen, acFilter, slashCommands]);
+
+  // Close autocomplete when matches empty
+  useEffect(() => {
+    if (acOpen && acMatches.length === 0) setAcOpen(false);
+  }, [acOpen, acMatches.length]);
+
+  // Auto-scroll active item into view
+  useEffect(() => {
+    if (!acOpen) return;
+    const container = acRef.current;
+    if (!container) return;
+    const item = container.children[acIndex] as HTMLElement | undefined;
+    item?.scrollIntoView({ block: "nearest" });
+  }, [acOpen, acIndex]);
+
+  const selectAcItem = useCallback((cmd: string) => {
+    const el = ref.current;
+    if (!el) return;
+    el.value = cmd + " ";
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+    setAcOpen(false);
+    el.focus();
+  }, []);
 
   const handleSend = useCallback(() => {
     const el = ref.current;
@@ -615,16 +711,38 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
   }, [disabled]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Autocomplete navigation
+    if (acOpen && acMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setAcIndex((i) => (i + 1) % acMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setAcIndex((i) => (i - 1 + acMatches.length) % acMatches.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        selectAcItem(acMatches[acIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setAcOpen(false);
+        return;
+      }
+    }
+
     if (e.key === "Escape" && isBusy) {
       e.preventDefault();
       const now = Date.now();
       if (now - lastEscapeRef.current < 400) {
-        // Double-Escape → interrupt
         lastEscapeRef.current = 0;
         setEscapeHint(false);
         onInterrupt();
       } else {
-        // First Escape → show hint
         lastEscapeRef.current = now;
         setEscapeHint(true);
         setTimeout(() => setEscapeHint(false), 1500);
@@ -635,14 +753,25 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
       e.preventDefault();
       handleSend();
     }
-  }, [handleSend, isBusy, onInterrupt]);
+  }, [handleSend, isBusy, onInterrupt, acOpen, acMatches, acIndex, selectAcItem]);
 
   const handleInput = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
-  }, []);
+
+    // Autocomplete trigger: value starts with /
+    const val = el.value;
+    if (val.startsWith("/") && slashCommands.length > 0) {
+      const filter = val.slice(1).split(/\s/)[0] || "";
+      setAcFilter(filter);
+      setAcIndex(0);
+      setAcOpen(true);
+    } else {
+      setAcOpen(false);
+    }
+  }, [slashCommands]);
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -687,6 +816,20 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
 
   return (
     <div id="input-bar">
+      {acOpen && acMatches.length > 0 && (
+        <div className="ac-dropdown" ref={acRef}>
+          {acMatches.map((cmd, i) => (
+            <div
+              key={cmd}
+              className={`ac-item${i === acIndex ? " ac-item-active" : ""}`}
+              onMouseDown={(e) => { e.preventDefault(); selectAcItem(cmd); }}
+              onMouseEnter={() => setAcIndex(i)}
+            >
+              {cmd}
+            </div>
+          ))}
+        </div>
+      )}
       {pendingImages.length > 0 && (
         <div className="image-preview-bar">
           {pendingImages.map((img, i) => (

@@ -77,6 +77,9 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
       mcpServers: init.mcp_servers as { name: string; status: string }[] | undefined,
       claudeCodeVersion: init.claude_code_version,
       cwd: init.cwd,
+      skills: init.skills,
+      agents: init.agents,
+      slashCommands: init.slash_commands,
     });
   });
 
@@ -116,6 +119,10 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
 
   session.on("stop", (ev) => {
     forward({ kind: "stop", sessionId: id, stopHookActive: ev.stopHookActive });
+  });
+
+  session.on("systemMessage", (text) => {
+    forward({ kind: "systemMessage", sessionId: id, text });
   });
 
   session.on("notification", (ev) => {
