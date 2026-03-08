@@ -66,6 +66,9 @@ export function spawnClaude(
 
   const args = buildArgs(config, settingsFile);
 
+  console.log("[spawn]", claudePath, args.join(" "));
+  console.log("[spawn cwd]", config.cwd ?? "(inherit)");
+
   const child = spawn(claudePath, args, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd: config.cwd,

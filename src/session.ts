@@ -41,7 +41,8 @@ export type SessionEventMap = {
   // Tool lifecycle (from hooks)
   toolStart: { toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string };
   toolEnd: { toolName: string; toolInput: Record<string, unknown>; response: unknown; toolUseId: string };
-  toolBlocked: { toolName: string; toolInput: Record<string, unknown>; reason: string; parentToolUseId?: string };
+  toolBlocked: { toolName: string; toolInput: Record<string, unknown>; toolUseId?: string; reason: string; parentToolUseId?: string };
+  toolPermission: { toolName: string; toolInput: Record<string, unknown>; toolUseId: string; parentToolUseId?: string };
 
   // Claude stopped generating
   stop: { stopHookActive: boolean; lastMessage: string };
@@ -76,6 +77,7 @@ export type Session = {
 
   setToolPolicy(policy: ToolPolicy | null): void;
   answerQuestion(toolUseId: string, answer: string): void;
+  approvePermission(toolUseId: string, allow: boolean): void;
   /** Soft interrupt: abort the current turn without killing the session. */
   interrupt(): void;
   kill(): void;
@@ -178,6 +180,29 @@ export async function createSession(
         });
         return `block:${decision.reason}`;
       }
+      if (decision.action === "ask") {
+        // Emit permission event and hold the hook until user approves/denies
+        emitter.emit("toolPermission", {
+          toolName: payload.tool_name,
+          toolInput: payload.tool_input,
+          toolUseId: payload.tool_use_id,
+          parentToolUseId: payload.parent_tool_use_id ?? undefined,
+        });
+        const allowed = await new Promise<boolean>((resolve) => {
+          pendingPermissions.set(payload.tool_use_id, resolve);
+        });
+        if (!allowed) {
+          emitter.emit("toolBlocked", {
+            toolName: payload.tool_name,
+            toolInput: payload.tool_input,
+            toolUseId: payload.tool_use_id,
+            reason: "Denied by user",
+            parentToolUseId: payload.parent_tool_use_id ?? undefined,
+          });
+          return "block:Denied by user";
+        }
+        return "allow";
+      }
     } catch (err) {
       emitter.emit("error", err instanceof Error ? err : new Error(String(err)));
     }
@@ -186,6 +211,9 @@ export async function createSession(
 
   // ── Pending user questions (AskUserQuestion interception) ──
   const pendingQuestions = new Map<string, (answer: string) => void>();
+
+  // ── Pending permission prompts (tool approval interception) ──
+  const pendingPermissions = new Map<string, (allow: boolean) => void>();
 
   // ── Hook server ──
   const hookServer: HookServer = await startHookServer({
@@ -306,12 +334,14 @@ export async function createSession(
 
   // ── Wire process exit ──
   proc.on("exit", (code, signal) => {
+    console.log(`[session exit] code=${code} signal=${signal} sessionId=${sessionId ?? "(none)"}`);
     transition("dead");
     emitter.emit("exit", { code, signal });
     hookServer.close();
   });
 
   proc.on("error", (err) => {
+    console.log(`[session error] ${err.message}`);
     transition("dead");
     emitter.emit("error", err);
     hookServer.close();
@@ -363,6 +393,14 @@ export async function createSession(
       if (resolve) {
         pendingQuestions.delete(toolUseId);
         resolve(answer);
+      }
+    },
+
+    approvePermission(toolUseId: string, allow: boolean): void {
+      const resolve = pendingPermissions.get(toolUseId);
+      if (resolve) {
+        pendingPermissions.delete(toolUseId);
+        resolve(allow);
       }
     },
 

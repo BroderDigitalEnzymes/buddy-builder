@@ -5,6 +5,7 @@ export type { ToolViewDef, ToolViewProps, ToolChatEntry } from "./core.js";
 // Import view modules — side-effect registration
 import "./raw.js";
 import "./ask-question.js";
+import "./permission.js";
 import "./agent.js";
 import "./tasks.js";
 import "./bash.js";

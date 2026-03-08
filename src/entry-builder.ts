@@ -117,7 +117,25 @@ export function applyEvent(entries: ChatEntry[], event: SessionEvent): boolean {
       return true;
     }
 
+    case "toolPermission": {
+      // Update the existing running tool entry to "permission" status
+      const entry = findToolEntry(entries, event.toolUseId);
+      if (entry) {
+        entry.status = "permission";
+      }
+      return true;
+    }
+
     case "toolBlocked": {
+      // Check if there's an existing tool entry (from toolStart → toolPermission → denied)
+      if (event.toolUseId) {
+        const existing = findToolEntry(entries, event.toolUseId);
+        if (existing) {
+          existing.status = "blocked";
+          existing.detail = event.reason;
+          return true;
+        }
+      }
       const target = resolveTargetEntries(entries, event.parentToolUseId);
       target.push({
         kind: "tool",

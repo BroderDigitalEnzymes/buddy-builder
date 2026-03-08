@@ -1,5 +1,5 @@
 import { build, context } from "esbuild";
-import { cpSync, mkdirSync, watch as fsWatch } from "fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync, existsSync, watch as fsWatch } from "fs";
 
 const isWatch = process.argv.includes("--watch");
 
@@ -9,9 +9,20 @@ const shared = {
   logLevel: "info",
 };
 
+/** Copy file only if content has actually changed (avoids spurious electronmon reloads). */
+function copyIfChanged(src, dst) {
+  const srcBuf = readFileSync(src);
+  if (existsSync(dst)) {
+    const dstBuf = readFileSync(dst);
+    if (srcBuf.equals(dstBuf)) return false;
+  }
+  writeFileSync(dst, srcBuf);
+  return true;
+}
+
 function copyStatic() {
-  cpSync("src/renderer/index.html", "dist/renderer/index.html");
-  cpSync("src/renderer/styles.css", "dist/renderer/styles.css");
+  copyIfChanged("src/renderer/index.html", "dist/renderer/index.html");
+  copyIfChanged("src/renderer/styles.css", "dist/renderer/styles.css");
   mkdirSync("dist/assets", { recursive: true });
   cpSync("assets", "dist/assets", { recursive: true });
 }
@@ -56,10 +67,15 @@ async function main() {
     copyStatic();
 
     // Watch static files (CSS, HTML) and re-copy on change
+    let copyTimer = null;
     for (const file of ["src/renderer/styles.css", "src/renderer/index.html"]) {
       fsWatch(file, () => {
-        copyStatic();
-        console.log(`Copied ${file}`);
+        if (copyTimer) return;
+        copyTimer = setTimeout(() => {
+          copyTimer = null;
+          const changed = copyIfChanged(file, file.replace("src/", "dist/"));
+          if (changed) console.log(`Copied ${file}`);
+        }, 100);
       });
     }
 

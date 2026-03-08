@@ -157,8 +157,10 @@ export async function loadPersistedSessions(): Promise<void> {
 }
 
 export async function createSession(permissionMode: PermissionMode, cwd?: string, name?: string): Promise<void> {
+  console.log("[store] createSession called", { permissionMode, cwd, name });
   try {
     const id = await api().createSession({ permissionMode, cwd, name });
+    console.log("[store] createSession got id:", id, "activeId will be:", id);
     state.counter++;
     state.sessions.set(id, {
       id,
@@ -188,7 +190,7 @@ export async function createSession(permissionMode: PermissionMode, cwd?: string
     state.activeId = id;
     emit();
   } catch (err) {
-    console.error("Failed to create session:", err);
+    console.error("[store] createSession FAILED:", err);
   }
 }
 
@@ -251,6 +253,15 @@ export async function answerQuestion(toolUseId: string, answer: string): Promise
     await api().answerQuestion({ sessionId: state.activeId, toolUseId, answer });
   } catch (err) {
     console.error("Failed to answer question:", err);
+  }
+}
+
+export async function approvePermission(toolUseId: string, allow: boolean): Promise<void> {
+  if (!state.activeId) return;
+  try {
+    await api().approvePermission({ sessionId: state.activeId, toolUseId, allow });
+  } catch (err) {
+    console.error("Failed to approve permission:", err);
   }
 }
 
@@ -345,7 +356,11 @@ export async function resumeInTerminal(id: string): Promise<void> {
 
 function handleEvent(event: SessionEvent): void {
   const data = state.sessions.get(event.sessionId);
-  if (!data) return;
+  if (!data) {
+    console.log("[store] event for unknown session:", event.kind, event.sessionId?.slice(0, 8));
+    return;
+  }
+  console.log("[store] event:", event.kind, event.sessionId?.slice(0, 8));
 
   // Unified entry building (text, tool lifecycle, result, error, exit)
   applyEvent(data.entries, event);

@@ -27,6 +27,9 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
+  "electronmon": {
+    "logLevel": "verbose"
+  },
   "dependencies": {
     "marked": "^17.0.3",
     "react": "^19.2.4",

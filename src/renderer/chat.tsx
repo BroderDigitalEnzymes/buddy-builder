@@ -98,9 +98,10 @@ const AVATAR_CLASSES: Record<Sender, string> = {
 // ─── Tool entry (collapsible, delegates to view registry) ────────
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
-  running: <span className="tool-icon spinning" />,
-  done:    <span className="tool-icon done" />,
-  blocked: <span className="tool-icon blocked" />,
+  running:    <span className="tool-icon spinning" />,
+  done:       <span className="tool-icon done" />,
+  blocked:    <span className="tool-icon blocked" />,
+  permission: <span className="tool-icon permission" />,
 };
 
 type ToolEntryProps = {

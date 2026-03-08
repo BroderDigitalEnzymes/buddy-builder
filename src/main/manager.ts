@@ -39,15 +39,23 @@ type EventSink = (event: SessionEvent) => void;
 
 // ─── Build a ToolPolicy function from a config ──────────────────
 
-function buildToolPolicy(config: ToolPolicyConfig) {
+function buildToolPolicy(config: ToolPolicyConfig, permissionMode: PermissionMode) {
   const blocked = config.preset === "unrestricted" && config.blockedTools.length === 0
     ? []
     : [...(PRESET_BLOCKED_TOOLS[config.preset] ?? []), ...config.blockedTools];
 
   const blockedSet = new Set(blocked);
 
+  // In "default" mode, restricted tools should prompt the user instead of silently blocking.
+  // Explicitly blocked tools (via blockedTools list) are always hard-blocked.
+  const explicitlyBlocked = new Set(config.blockedTools);
+  const shouldAsk = permissionMode === "default";
+
   return (toolName: string, _input: Record<string, unknown>) => {
     if (blockedSet.has(toolName)) {
+      if (shouldAsk && !explicitlyBlocked.has(toolName)) {
+        return { action: "ask" as const };
+      }
       return { action: "block" as const, reason: `Blocked by policy (${config.preset})` };
     }
     return { action: "allow" as const };
@@ -100,7 +108,11 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("toolBlocked", (ev) => {
-    forward({ kind: "toolBlocked", sessionId: id, toolName: ev.toolName, reason: ev.reason, parentToolUseId: ev.parentToolUseId });
+    forward({ kind: "toolBlocked", sessionId: id, toolName: ev.toolName, toolUseId: ev.toolUseId, reason: ev.reason, parentToolUseId: ev.parentToolUseId });
+  });
+
+  session.on("toolPermission", (ev) => {
+    forward({ kind: "toolPermission", sessionId: id, toolName: ev.toolName, toolInput: ev.toolInput, toolUseId: ev.toolUseId, parentToolUseId: ev.parentToolUseId });
   });
 
   session.on("result", (r) => {
@@ -134,6 +146,7 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("stateChange", (ev) => {
+    console.log(`[stateChange] ${id.slice(0, 8)} ${ev.from} → ${ev.to}`);
     sink({ kind: "stateChange", sessionId: id, from: ev.from, to: ev.to });
   });
 
@@ -157,6 +170,7 @@ export type SessionManager = {
   create(options?: CreateSessionOptions): Promise<string>;
   send(id: string, text: string, images?: ImageData[]): void;
   answerQuestion(id: string, toolUseId: string, answer: string): void;
+  approvePermission(id: string, toolUseId: string, allow: boolean): void;
   interrupt(id: string): void;
   kill(id: string): void;
   remove(id: string): void;
@@ -252,7 +266,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       };
       sessions.set(id, managed);
 
-      session.setToolPolicy(buildToolPolicy(policy));
+      session.setToolPolicy(buildToolPolicy(policy, permMode));
       wireSession(managed, session, sink);
       return id;
     },
@@ -270,6 +284,12 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const managed = getManaged(id);
       if (!managed.session) throw new Error("Session is dead");
       managed.session.answerQuestion(toolUseId, answer);
+    },
+
+    approvePermission(id: string, toolUseId: string, allow: boolean): void {
+      const managed = getManaged(id);
+      if (!managed.session) throw new Error("Session is dead");
+      managed.session.approvePermission(toolUseId, allow);
     },
 
     interrupt(id: string): void {
@@ -323,7 +343,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
       const session = await createSession(config);
       managed.session = session;
-      session.setToolPolicy(buildToolPolicy(managed.policy));
+      session.setToolPolicy(buildToolPolicy(managed.policy, managed.permissionMode));
 
       // Ensure entries are loaded before appending
       ensureEntries(managed).push({ kind: "system", text: "Session resumed.", ts: Date.now() });
@@ -370,7 +390,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const managed = getManaged(id);
       managed.policy = policy;
       if (managed.session) {
-        managed.session.setToolPolicy(buildToolPolicy(policy));
+        managed.session.setToolPolicy(buildToolPolicy(policy, managed.permissionMode));
       }
       if (managed.claudeSessionId) {
         updateSessionMeta(managed.claudeSessionId, { policyPreset: policy.preset });

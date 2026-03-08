@@ -144,6 +144,7 @@ function setupIpc(mgr: SessionManager): void {
     createSession:     (opts) => mgr.create(opts),
     sendMessage:       ({ sessionId, text, images }) => { mgr.send(sessionId, text, images); },
     answerQuestion:    ({ sessionId, toolUseId, answer }) => { mgr.answerQuestion(sessionId, toolUseId, answer); },
+    approvePermission: ({ sessionId, toolUseId, allow }) => { mgr.approvePermission(sessionId, toolUseId, allow); },
     interruptSession:  ({ sessionId }) => { mgr.interrupt(sessionId); },
     killSession:       ({ sessionId }) => { mgr.kill(sessionId); },
     listSessions:      () => mgr.list(),

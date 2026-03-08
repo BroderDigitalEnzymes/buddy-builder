@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { sendMessage } from "../store.js";
 import type { ChatEntry } from "../../ipc.js";
 
@@ -55,6 +55,14 @@ export function ToolViewTabs({ entry }: { entry: ToolChatEntry }) {
   const defaultId = matchingViews[0]?.id ?? "raw";
   const [activeId, setActiveId] = useState(defaultId);
   const [expanded, setExpanded] = useState(false);
+
+  // When a fullReplace view appears (e.g. permission prompt), auto-switch to it
+  const topView = matchingViews[0];
+  useEffect(() => {
+    if (topView?.fullReplace && activeId !== topView.id) {
+      setActiveId(topView.id);
+    }
+  }, [topView?.id, topView?.fullReplace]);
 
   // If active tab no longer matches, fall back to first.
   const activeView =

@@ -216,7 +216,8 @@ export type SessionConfig = z.infer<typeof SessionConfigSchema>;
 
 export type ToolAction =
   | { readonly action: "allow" }
-  | { readonly action: "block"; readonly reason: string };
+  | { readonly action: "block"; readonly reason: string }
+  | { readonly action: "ask" };
 
 export type ToolPolicy = (
   toolName: string,
