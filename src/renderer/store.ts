@@ -50,9 +50,12 @@ export type SessionData = {
 
 // ─── Store ───────────────────────────────────────────────────────
 
+export type ViewMode = "home" | "chat";
+
 type StoreState = {
   sessions: Map<string, SessionData>;
   activeId: string | null;
+  currentView: ViewMode;
   poppedOutIds: Set<string>;
   counter: number;
   version: number;
@@ -61,6 +64,7 @@ type StoreState = {
 const state: StoreState = {
   sessions: new Map(),
   activeId: null,
+  currentView: "home",
   poppedOutIds: new Set(),
   counter: 0,
   version: 0,
@@ -97,6 +101,25 @@ export function getState(): StoreState {
 }
 
 // ─── Actions ─────────────────────────────────────────────────────
+
+export function navigateHome(): void {
+  state.currentView = "home";
+  emit();
+}
+
+export async function openInApp(id: string): Promise<void> {
+  state.activeId = id;
+  state.currentView = "chat";
+  // Lazy-load entries
+  const data = state.sessions.get(id);
+  if (data && data.entries.length === 0) {
+    try {
+      const entries = await api().getSessionEntries({ sessionId: id });
+      data.entries = entries;
+    } catch { /* empty */ }
+  }
+  emit();
+}
 
 export async function switchSession(id: string): Promise<void> {
   if (IS_POPOUT && id !== POPOUT_SESSION_ID) return; // locked to one session
@@ -156,29 +179,54 @@ export async function loadPersistedSessions(): Promise<void> {
   }
 }
 
-export async function createSession(permissionMode: PermissionMode, cwd?: string, name?: string): Promise<void> {
-  console.log("[store] createSession called", { permissionMode, cwd, name });
+export type NewSessionOptions = {
+  permissionMode: PermissionMode;
+  cwd?: string;
+  name?: string;
+  model?: string;
+  systemPrompt?: string;
+  maxTurns?: number;
+  openInApp?: boolean; // false = terminal only, default true
+};
+
+export async function createSession(permissionMode: PermissionMode, cwd?: string, name?: string): Promise<string | null>;
+export async function createSession(opts: NewSessionOptions): Promise<string | null>;
+export async function createSession(
+  permOrOpts: PermissionMode | NewSessionOptions,
+  cwd?: string,
+  name?: string,
+): Promise<string | null> {
+  const opts: NewSessionOptions = typeof permOrOpts === "string"
+    ? { permissionMode: permOrOpts, cwd, name }
+    : permOrOpts;
+
   try {
-    const id = await api().createSession({ permissionMode, cwd, name });
-    console.log("[store] createSession got id:", id, "activeId will be:", id);
+    const id = await api().createSession({
+      permissionMode: opts.permissionMode,
+      cwd: opts.cwd,
+      name: opts.name,
+      model: opts.model,
+      systemPrompt: opts.systemPrompt,
+      maxTurns: opts.maxTurns,
+    });
     state.counter++;
     state.sessions.set(id, {
       id,
-      name: name ?? `Session ${state.counter}`,
-      projectName: cwd ?? "(new)",
+      name: opts.name ?? `Session ${state.counter}`,
+      projectName: opts.cwd ?? "(new)",
       state: "idle",
       claudeSessionId: null,
-      cwd: cwd ?? null,
-      permissionMode,
-      policyPreset: PERMISSION_MODE_PRESETS[permissionMode],
+      cwd: opts.cwd ?? null,
+      permissionMode: opts.permissionMode,
+      policyPreset: PERMISSION_MODE_PRESETS[opts.permissionMode],
       favorite: false,
       lastActiveAt: Date.now(),
-      entries: [{ kind: "system", text: `Session created · ${permissionMode}`, ts: Date.now() }],
+      entries: [{ kind: "system", text: `Session created · ${opts.permissionMode}`, ts: Date.now() }],
       rateLimit: null,
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCost: 0,
-      model: null,
+      model: opts.model ?? null,
       tools: [],
       mcpServers: [],
       claudeCodeVersion: null,
@@ -188,9 +236,14 @@ export async function createSession(permissionMode: PermissionMode, cwd?: string
       messageQueue: [],
     });
     state.activeId = id;
+    if (opts.openInApp !== false) {
+      state.currentView = "chat";
+    }
     emit();
+    return id;
   } catch (err) {
     console.error("[store] createSession FAILED:", err);
+    return null;
   }
 }
 

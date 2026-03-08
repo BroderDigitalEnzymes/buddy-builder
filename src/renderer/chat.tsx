@@ -605,11 +605,12 @@ type ChatHeaderProps = {
   onSetPreset: (p: PolicyPreset) => void;
   onToggleFavorite: (id: string) => void;
   onOpenTerminal?: (id: string) => void;
+  onBack?: () => void;
   onPopOut?: (id: string) => void;
   onPopIn?: () => void;
 };
 
-export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onOpenTerminal, onPopOut, onPopIn }: ChatHeaderProps) {
+export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onOpenTerminal, onBack, onPopOut, onPopIn }: ChatHeaderProps) {
   if (!session) {
     return <div id="chat-header" />;
   }
@@ -617,6 +618,13 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
   return (
     <div id="chat-header">
       <div className="chat-header-left">
+        {onBack && (
+          <button className="chat-header-back" onClick={onBack} title="Back to sessions">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 2L4 8l6 6" />
+            </svg>
+          </button>
+        )}
         <button
           className={`chat-header-star ${session.favorite ? "starred" : ""}`}
           title={session.favorite ? "Remove from favorites" : "Add to favorites"}

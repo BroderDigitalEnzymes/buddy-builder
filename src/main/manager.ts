@@ -244,6 +244,9 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         claudePath,
         permissionMode: permMode,
         cwd: cwd ?? undefined,
+        model: options?.model,
+        systemPrompt: options?.systemPrompt,
+        maxTurns: options?.maxTurns,
       };
 
       const session = await createSession(config);

@@ -18,22 +18,24 @@ import {
   popOutSession,
   popInSession,
   focusPopout,
+  navigateHome,
+  openInApp,
   IS_POPOUT,
 } from "./store.js";
+import { TitleBar } from "./components.js";
 import {
-  TitleBar,
-  Sidebar,
   ChatHeader,
   MessageList,
   InputBar,
   RateLimitBanner,
-} from "./components.js";
-import type { ImageData, PolicyPreset, PermissionMode } from "../ipc.js";
+} from "./chat.js";
+import { HomeView } from "./home-view.js";
+import type { ImageData, PolicyPreset } from "../ipc.js";
 
 function App() {
   // Subscribe to all store changes via version counter
   useStoreVersion();
-  const { sessions, activeId, poppedOutIds } = getState();
+  const { sessions, activeId, currentView, poppedOutIds } = getState();
 
   // Load persisted sessions on mount
   useEffect(() => {
@@ -46,18 +48,8 @@ function App() {
   const canSend = !!activeSession && activeSession.state !== "dead";
   const showResume = !!activeSession && activeSession.state === "dead" && !!activeSession.claudeSessionId;
 
-  const handleSwitch = useCallback((id: string) => {
-    if (poppedOutIds.has(id)) { focusPopout(id); return; }
-    switchSession(id);
-  }, [poppedOutIds]);
-  const handleKill = useCallback((id: string) => killSession(id), []);
-  const handleDelete = useCallback((id: string) => deleteSession(id), []);
-  const handleRename = useCallback((id: string, name: string) => renameSession(id, name), []);
-  const handleCreate = useCallback((perm: PermissionMode, cwd?: string, name?: string) => createSession(perm, cwd, name), []);
   const handlePreset = useCallback((p: PolicyPreset) => setPreset(p), []);
-  const handleToggleFavorite = useCallback((id: string) => {
-    toggleFavorite(id);
-  }, []);
+  const handleToggleFavorite = useCallback((id: string) => toggleFavorite(id), []);
   const handleSend = useCallback((text: string, images?: ImageData[]) => sendMessage(text, images), []);
   const handleInterrupt = useCallback(() => {
     if (activeId) interruptSession(activeId);
@@ -84,7 +76,7 @@ function App() {
     return [...new Set(all)].sort();
   }, [activeSession?.skills, activeSession?.agents, activeSession?.slashCommands]);
 
-  // Chat area — defined once, rendered in both layouts
+  // Chat area — used in chat view and popout
   const chatArea = (
     <div id="main-area">
       <ChatHeader
@@ -92,6 +84,7 @@ function App() {
         onSetPreset={handlePreset}
         onToggleFavorite={handleToggleFavorite}
         onOpenTerminal={resumeInTerminal}
+        onBack={IS_POPOUT ? undefined : navigateHome}
         onPopOut={IS_POPOUT ? undefined : handlePopOut}
         onPopIn={IS_POPOUT ? handlePopIn : undefined}
       />
@@ -111,24 +104,21 @@ function App() {
     </div>
   );
 
+  // Popout windows always show chat
+  if (IS_POPOUT) {
+    return (
+      <>
+        <TitleBar compact sessionName={activeSession?.name} />
+        {chatArea}
+      </>
+    );
+  }
+
   return (
     <>
-      <TitleBar compact={IS_POPOUT} sessionName={IS_POPOUT ? activeSession?.name : undefined} />
-      {IS_POPOUT ? chatArea : (
-        <div id="app-layout">
-          <Sidebar
-            sessions={sessionList}
-            activeId={activeId}
-            poppedOutIds={poppedOutIds}
-            onSwitch={handleSwitch}
-            onKill={handleKill}
-            onDelete={handleDelete}
-            onRename={handleRename}
-            onCreate={handleCreate}
-            onToggleFavorite={handleToggleFavorite}
-          />
-          {chatArea}
-        </div>
+      <TitleBar />
+      {currentView === "chat" ? chatArea : (
+        <HomeView sessions={sessionList} poppedOutIds={poppedOutIds} />
       )}
     </>
   );

@@ -85,6 +85,9 @@ export type CreateSessionOptions = {
   readonly permissionMode?: PermissionMode;
   readonly cwd?: string;
   readonly name?: string;
+  readonly model?: string;
+  readonly systemPrompt?: string;
+  readonly maxTurns?: number;
 };
 
 /** Map a UI permission mode to an initial tool policy preset. */
