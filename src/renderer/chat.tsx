@@ -71,20 +71,22 @@ const SENDER_LABELS: Record<Sender, string> = {
 
 const SENDER_ICONS: Record<Sender, React.ReactNode> = {
   user: (
-    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="8" cy="5" r="3" />
-      <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
     </svg>
   ),
   claude: (
-    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-      <path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13l-1.8-4.2L2 7l4.2-1.8z" />
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+      <path d="M12 2l2.4 5.6L20 10l-5.6 2.4L12 18l-2.4-5.6L4 10l5.6-2.4z" />
+      <circle cx="19" cy="5" r="1.5" opacity="0.5" />
+      <circle cx="5" cy="17" r="1" opacity="0.4" />
     </svg>
   ),
   system: (
-    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="8" cy="8" r="2" />
-      <path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M13 3l-2 2M5 11l-2 2" strokeWidth="1.5" stroke="#fff" fill="none" />
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M19.07 4.93l-2.83 2.83M7.76 16.24l-2.83 2.83" />
     </svg>
   ),
 };
@@ -169,14 +171,13 @@ function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
 
     case "text":
       if (entry.streaming) {
-        // Compact single-line indicator — just enough to show life
         const lines = entry.text.split("\n");
         const lastLine = lines[lines.length - 1]?.trimStart() || lines[lines.length - 2]?.trimStart() || "";
-        const preview = lastLine.slice(0, 120);
+        const preview = lastLine.slice(0, 160);
         return (
-          <div className="streaming-line">
-            <span className="streaming-pulse" />
-            <span className="streaming-preview">{preview}</span>
+          <div className="streaming-block">
+            <div className="streaming-bar" />
+            <span className="streaming-preview">{preview}<span className="streaming-cursor" /></span>
           </div>
         );
       }
@@ -335,6 +336,11 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
             <div className="msg-content">
               <div className="msg-header">
                 <span className="msg-sender">Claude</span>
+              </div>
+              <div className="thinking-indicator">
+                <span className="thinking-dot" />
+                <span className="thinking-dot" />
+                <span className="thinking-dot" />
               </div>
             </div>
           </div>
