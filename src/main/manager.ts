@@ -45,9 +45,41 @@ type ManagedSession = {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCost: number;
+  // Auto-naming
+  autoNamed: boolean;   // title tag already extracted (or not needed)
+  userNamed: boolean;   // user explicitly set the name (rename or creation option)
+  turnCount: number;
 };
 
 type EventSink = (event: SessionEvent) => void;
+
+// ─── Auto-naming ────────────────────────────────────────────────
+
+const TITLE_TAG_RE = /<session-title>([\s\S]*?)<\/session-title>/;
+
+const NAMING_INSTRUCTION = [
+  "After your third response in this conversation, include exactly once a hidden tag",
+  "with a short 3-6 word title summarizing what this conversation is about:",
+  "<session-title>short descriptive title</session-title>",
+  "Place it at the very end of your message. Do this only once, never again after that.",
+].join(" ");
+
+/** Extract and strip the <session-title> tag from text. Returns [cleanText, title | null]. */
+function extractTitle(text: string): [string, string | null] {
+  const match = text.match(TITLE_TAG_RE);
+  if (!match) return [text, null];
+  const title = match[1].trim();
+  const clean = text.replace(TITLE_TAG_RE, "").trimEnd();
+  return [clean, title || null];
+}
+
+// Separate instruction for resumed sessions — "next response" instead of "third response"
+const NAMING_INSTRUCTION_RESUME = [
+  "In your next response, include exactly once a hidden tag",
+  "with a short 3-6 word title summarizing what this conversation is about:",
+  "<session-title>short descriptive title</session-title>",
+  "Place it at the very end of your message. Do this only once, never again after that.",
+].join(" ");
 
 // ─── Build a ToolPolicy function from a config ──────────────────
 
@@ -111,11 +143,35 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("textDelta", (ev) => {
-    forward({ kind: "textDelta", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
+    let text = ev.text;
+    // Strip title tag fragments from streaming deltas (best-effort)
+    if (!managed.autoNamed && !ev.parentToolUseId) {
+      text = text.replace(TITLE_TAG_RE, "");
+    }
+    if (text) {
+      forward({ kind: "textDelta", sessionId: id, text, parentToolUseId: ev.parentToolUseId });
+    }
   });
 
   session.on("text", (ev) => {
-    forward({ kind: "text", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
+    let text = ev.text;
+
+    // Auto-naming: scan top-level text messages for the title tag
+    if (!managed.autoNamed && !ev.parentToolUseId) {
+      managed.turnCount++;
+      const [clean, title] = extractTitle(text);
+      if (title) {
+        text = clean;
+        managed.autoNamed = true;
+        managed.name = title;
+        if (managed.claudeSessionId) {
+          updateSessionMeta(managed.claudeSessionId, { name: title });
+        }
+        sink({ kind: "nameChanged", sessionId: id, name: title });
+      }
+    }
+
+    forward({ kind: "text", sessionId: id, text, parentToolUseId: ev.parentToolUseId });
   });
 
   session.on("toolStart", (ev) => {
@@ -246,6 +302,9 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCost: 0,
+      autoNamed: true,  // don't scan until resumed
+      userNamed: !!m.name,  // true if user explicitly renamed via metadata
+      turnCount: 0,
     };
     sessions.set(id, managed);
   }
@@ -280,6 +339,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         cwd: cwd ?? undefined,
         model: options?.model,
         systemPrompt: options?.systemPrompt,
+        appendSystemPrompt: options?.name ? undefined : NAMING_INSTRUCTION,
         maxTurns: options?.maxTurns,
       };
 
@@ -310,6 +370,9 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalCost: 0,
+        autoNamed: !!options?.name,
+        userNamed: !!options?.name,
+        turnCount: 0,
       };
       sessions.set(id, managed);
 
@@ -369,6 +432,8 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
     rename(id: string, name: string): void {
       const managed = getManaged(id);
       managed.name = name;
+      managed.userNamed = true;
+      managed.autoNamed = true; // stop scanning
       managed.lastActiveAt = Date.now();
       if (managed.claudeSessionId) {
         updateSessionMeta(managed.claudeSessionId, { name });
@@ -381,12 +446,21 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       if (managed.session) throw new Error("Session is already alive");
       if (!managed.claudeSessionId) throw new Error("No Claude session ID to resume");
 
+      // Inject naming instruction if the user never explicitly named this session
+      const shouldAutoName = !managed.userNamed;
+
       const config: SessionConfig = {
         claudePath,
         permissionMode: managed.permissionMode,
         resumeSessionId: managed.claudeSessionId,
         cwd: managed.cwd ?? undefined,
+        appendSystemPrompt: shouldAutoName ? NAMING_INSTRUCTION_RESUME : undefined,
       };
+
+      if (shouldAutoName) {
+        managed.autoNamed = false;
+        managed.turnCount = 0;
+      }
 
       const session = await createSession(config);
       managed.session = session;
