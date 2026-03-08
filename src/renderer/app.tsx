@@ -21,8 +21,10 @@ import {
   navigateHome,
   openInApp,
   IS_POPOUT,
+  IS_INFO,
+  INFO_SESSION_ID,
 } from "./store.js";
-import { TitleBar } from "./components.js";
+import { TitleBar, InfoWindow } from "./components.js";
 import {
   ChatHeader,
   MessageList,
@@ -103,6 +105,15 @@ function App() {
       />
     </div>
   );
+
+  if (IS_INFO) {
+    return (
+      <>
+        <TitleBar compact sessionName="Session Info" />
+        <InfoWindow sessionId={INFO_SESSION_ID!} />
+      </>
+    );
+  }
 
   // Popout windows always show chat
   if (IS_POPOUT) {
