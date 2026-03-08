@@ -7,6 +7,8 @@ import {
   type PermissionMode,
   type ChatEntry,
   type ImageData,
+  type SearchResultItem,
+  type IndexStatusInfo,
 } from "../ipc.js";
 import { api } from "./utils.js";
 import { applyEvent } from "../entry-builder.js";
@@ -61,6 +63,9 @@ type StoreState = {
   poppedOutIds: Set<string>;
   counter: number;
   version: number;
+  searchResults: SearchResultItem[] | null;
+  searchQuery: string;
+  indexStatus: IndexStatusInfo;
 };
 
 const state: StoreState = {
@@ -70,6 +75,9 @@ const state: StoreState = {
   poppedOutIds: new Set(),
   counter: 0,
   version: 0,
+  searchResults: null,
+  searchQuery: "",
+  indexStatus: { totalSessions: 0, indexedSessions: 0, isIndexing: false },
 };
 
 // useSyncExternalStore needs getSnapshot to return the same reference
@@ -481,5 +489,58 @@ export async function focusPopout(id: string): Promise<boolean> {
   return await api().focusPopout({ sessionId: id });
 }
 
+// ─── Search actions ──────────────────────────────────────────────
+
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function setSearchQuery(query: string): void {
+  state.searchQuery = query;
+
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+
+  if (!query.trim()) {
+    state.searchResults = null;
+    emit();
+    return;
+  }
+
+  emit();
+
+  searchDebounceTimer = setTimeout(async () => {
+    try {
+      const results = await api().searchSessions({ query: query.trim() });
+      // Only apply if query hasn't changed while we were waiting
+      if (state.searchQuery === query) {
+        state.searchResults = results;
+        emit();
+      }
+    } catch (err) {
+      console.error("[store] search failed:", err);
+    }
+  }, 200);
+}
+
+export function clearSearch(): void {
+  state.searchQuery = "";
+  state.searchResults = null;
+  emit();
+}
+
+export async function triggerReindex(): Promise<void> {
+  try {
+    await api().triggerReindex();
+  } catch (err) {
+    console.error("[store] reindex failed:", err);
+  }
+}
+
+// ─── IPC event wiring ───────────────────────────────────────────
+
 // Wire up the IPC event listener
 api().onSessionEvent(handleEvent);
+
+// Wire up index progress listener
+api().onIndexProgress((status: IndexStatusInfo) => {
+  state.indexStatus = status;
+  emit();
+});

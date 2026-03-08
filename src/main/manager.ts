@@ -205,6 +205,7 @@ export type SessionManager = {
   setFavorite(id: string, favorite: boolean): void;
   updatePolicy(id: string, policy: ToolPolicyConfig): void;
   getPolicy(id: string): ToolPolicyConfig;
+  getIndexableData(): { sessionId: string; transcriptPath: string | null }[];
   dispose(): Promise<void>;
 };
 
@@ -465,6 +466,13 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
     getPolicy(id: string): ToolPolicyConfig {
       return getManaged(id).policy;
+    },
+
+    getIndexableData(): { sessionId: string; transcriptPath: string | null }[] {
+      return [...sessions.values()].map((s) => ({
+        sessionId: s.id,
+        transcriptPath: s.transcriptPath,
+      }));
     },
 
     async dispose(): Promise<void> {

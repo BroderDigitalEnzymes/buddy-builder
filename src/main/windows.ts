@@ -46,6 +46,15 @@ export function hasPopout(sessionId: string): boolean {
   return registry.some((e) => e.kind === "popout" && e.sessionId === sessionId);
 }
 
+/** Broadcast an event on a given channel to all registered windows. */
+export function broadcast(channel: string, data: unknown): void {
+  for (const entry of registry) {
+    if (!entry.win.isDestroyed()) {
+      entry.win.webContents.send(channel, data);
+    }
+  }
+}
+
 export function closeAllPopouts(): void {
   for (const entry of [...registry]) {
     if (entry.kind === "popout" && !entry.win.isDestroyed()) entry.win.close();

@@ -11,6 +11,8 @@ import {
   toggleFavorite,
   focusPopout,
   pickFolder,
+  setSearchQuery,
+  getState,
 } from "./store.js";
 import { SettingsModal } from "./chat.js";
 import { buildCliCommand } from "./utils.js";
@@ -113,13 +115,14 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
   sessions: SessionData[];
   poppedOutIds: Set<string>;
 }) {
-  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Filter and sort sessions
+  const { searchQuery, searchResults } = getState();
+
+  // Filter and sort sessions (used when no full-text search active)
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = searchQuery.toLowerCase();
     const list = q
       ? sessions.filter((s) =>
           s.name.toLowerCase().includes(q) ||
@@ -130,7 +133,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
       if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
       return b.lastActiveAt - a.lastActiveAt;
     });
-  }, [sessions, search]);
+  }, [sessions, searchQuery]);
 
   const selectedSession = selectedId ? sessions.find((s) => s.id === selectedId) ?? null : null;
 
@@ -154,6 +157,17 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
     }
   }, [poppedOutIds, sessions]);
 
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleSearchClear = useCallback(() => {
+    setSearchQuery("");
+  }, []);
+
+  // Use search results when available, otherwise fall back to name/cwd filter
+  const showSearchResults = searchResults !== null && searchQuery.trim().length > 0;
+
   return (
     <>
       <div id="home-view">
@@ -164,12 +178,12 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
                 <input
                   className="home-search-input"
                   type="text"
-                  placeholder="Search sessions..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search sessions and content..."
+                  value={searchQuery}
+                  onChange={handleSearchChange}
                 />
-                {search && (
-                  <button className="home-search-clear" onClick={() => setSearch("")}>
+                {searchQuery && (
+                  <button className="home-search-clear" onClick={handleSearchClear}>
                     {"\u00D7"}
                   </button>
                 )}
@@ -181,28 +195,57 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
           </div>
           <div className="home-body">
             <div className="home-list">
-              {filtered.length === 0 && (
-                <div className="home-empty">
-                  {search ? `No sessions match "${search}"` : "No sessions yet"}
-                </div>
+              {showSearchResults ? (
+                // Full-text search results
+                <>
+                  {searchResults.length === 0 && (
+                    <div className="home-empty">
+                      No results for "{searchQuery}"
+                    </div>
+                  )}
+                  {searchResults.map((r) => (
+                    <button
+                      key={r.sessionId}
+                      className={`home-session-item search-result ${selectedId === r.sessionId ? "selected" : ""}`}
+                      onClick={() => handleClick(r.sessionId)}
+                    >
+                      <span className="home-session-name">{r.sessionName}</span>
+                      {r.cwd && <span className="home-session-cwd">{lastSegment(r.cwd)}</span>}
+                      <span className="home-session-time">{timeAgo(r.lastActiveAt)}</span>
+                      <span
+                        className="search-snippet"
+                        dangerouslySetInnerHTML={{ __html: r.snippet }}
+                      />
+                    </button>
+                  ))}
+                </>
+              ) : (
+                // Normal session list
+                <>
+                  {filtered.length === 0 && (
+                    <div className="home-empty">
+                      {searchQuery ? `No sessions match "${searchQuery}"` : "No sessions yet"}
+                    </div>
+                  )}
+                  {filtered.map((s) => (
+                    <button
+                      key={s.id}
+                      className={`home-session-item ${s.state === "dead" ? "dead" : ""} ${selectedId === s.id ? "selected" : ""}`}
+                      onClick={() => handleClick(s.id)}
+                    >
+                      <span
+                        className={`home-session-star ${s.favorite ? "starred" : ""}`}
+                        onClick={(e) => { e.stopPropagation(); toggleFavorite(s.id); }}
+                      >
+                        {s.favorite ? "\u2605" : "\u2606"}
+                      </span>
+                      <span className="home-session-name">{s.name}</span>
+                      {s.cwd && <span className="home-session-cwd">{lastSegment(s.cwd)}</span>}
+                      <span className="home-session-time">{timeAgo(s.lastActiveAt)}</span>
+                    </button>
+                  ))}
+                </>
               )}
-              {filtered.map((s) => (
-                <button
-                  key={s.id}
-                  className={`home-session-item ${s.state === "dead" ? "dead" : ""} ${selectedId === s.id ? "selected" : ""}`}
-                  onClick={() => handleClick(s.id)}
-                >
-                  <span
-                    className={`home-session-star ${s.favorite ? "starred" : ""}`}
-                    onClick={(e) => { e.stopPropagation(); toggleFavorite(s.id); }}
-                  >
-                    {s.favorite ? "\u2605" : "\u2606"}
-                  </span>
-                  <span className="home-session-name">{s.name}</span>
-                  {s.cwd && <span className="home-session-cwd">{lastSegment(s.cwd)}</span>}
-                  <span className="home-session-time">{timeAgo(s.lastActiveAt)}</span>
-                </button>
-              ))}
             </div>
             <div className="home-detail">
               {selectedSession ? (

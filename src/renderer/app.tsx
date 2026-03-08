@@ -32,6 +32,7 @@ import {
   RateLimitBanner,
 } from "./chat.js";
 import { HomeView } from "./home-view.js";
+import { StatusBar } from "./status-bar.js";
 import type { ImageData, PolicyPreset } from "../ipc.js";
 
 function App() {
@@ -131,6 +132,7 @@ function App() {
       {currentView === "chat" ? chatArea : (
         <HomeView sessions={sessionList} poppedOutIds={poppedOutIds} />
       )}
+      <StatusBar />
     </>
   );
 }
