@@ -298,9 +298,7 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
 
   if (entries.length === 0) {
     return (
-      <div id="chat" className="chat-area chat-empty" ref={containerRef}>
-        <div className="empty-state">No session. Click <strong>+ New</strong> to start.</div>
-      </div>
+      <div id="chat" className="chat-area chat-empty" ref={containerRef} />
     );
   }
 

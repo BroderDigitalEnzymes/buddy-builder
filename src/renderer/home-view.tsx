@@ -79,11 +79,9 @@ function SessionCard({ session, onClose }: {
         </button>
       </div>
       <div className="session-card-actions">
-        {!isDead && (
-          <button className="session-card-btn primary" onClick={() => openInApp(session.id)}>
-            Open
-          </button>
-        )}
+        <button className="session-card-btn primary" onClick={() => openInApp(session.id)}>
+          {isDead ? "View" : "Open"}
+        </button>
         {canResume && (
           <>
             <button className="session-card-btn primary" onClick={() => { resumeSession(session.id); openInApp(session.id); }}>
@@ -150,6 +148,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
     if (s && s.state !== "dead") {
       openInApp(id);
     } else {
+      // Toggle card selection; double-click would need separate handler
       setSelectedId((prev) => (prev === id ? null : id));
     }
   }, [poppedOutIds, sessions]);
