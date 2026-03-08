@@ -205,6 +205,7 @@ export async function createSession(
       }
     } catch (err) {
       emitter.emit("error", err instanceof Error ? err : new Error(String(err)));
+      return "block:Hook error";
     }
     return "allow";
   }

@@ -50,8 +50,7 @@ export function buildHookCommand(hookName: string): string {
     `http://127.0.0.1:$BUDDY_PORT `,
     `-H "X-Hook: ${hookName}" `,
     `-d @- 2>/dev/null); `,
-    `case "$RESP" in block:*) echo "${`$`}{RESP#block:}" >&2; exit 2;; esac; `,
-    `exit 0`,
+    `case "$RESP" in allow) exit 0;; block:*) echo "${`$`}{RESP#block:}" >&2; exit 2;; *) echo "Hook unreachable" >&2; exit 2;; esac`,
     `'`,
   ].join("");
 }
