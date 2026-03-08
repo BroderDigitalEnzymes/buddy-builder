@@ -18,6 +18,8 @@ export type { ChatEntry } from "../ipc.js";
 const hashParams = new URLSearchParams(window.location.hash.slice(1));
 export const POPOUT_SESSION_ID: string | null = hashParams.get("popout");
 export const IS_POPOUT = !!POPOUT_SESSION_ID;
+export const INFO_SESSION_ID: string | null = hashParams.get("info");
+export const IS_INFO = !!INFO_SESSION_ID;
 
 export type SessionData = {
   id: string;

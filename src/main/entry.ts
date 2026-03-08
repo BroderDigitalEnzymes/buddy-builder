@@ -24,6 +24,9 @@ const POPOUT_HEIGHT = 600;
 const POPOUT_MIN_WIDTH = 500;
 const POPOUT_MIN_HEIGHT = 350;
 
+const INFO_WIDTH = 550;
+const INFO_HEIGHT = 520;
+
 // ─── Globals ─────────────────────────────────────────────────────
 
 // Suppress GUI error dialogs — log to stderr instead
@@ -112,6 +115,22 @@ function createPopoutWindow(sessionId: string): void {
   });
 }
 
+// ─── Info window (read-only session metadata popup) ──────────────
+
+function createInfoWindow(sessionId: string): void {
+  const win = createWindowBase({
+    width: INFO_WIDTH,
+    height: INFO_HEIGHT,
+    title: "Session Info",
+  });
+
+  win.loadFile(path.join(__dirname, "renderer", "index.html"), {
+    hash: `info=${sessionId}`,
+  });
+
+  // Not registered in event dispatch — it's a read-only snapshot
+}
+
 // ─── Test mode ───────────────────────────────────────────────────
 
 function runTestMode(): void {
@@ -189,6 +208,8 @@ function setupIpc(mgr: SessionManager): void {
       fs.writeFileSync(p, image.toPNG());
       return p;
     },
+    getSessionMeta: ({ sessionId }) => mgr.getMeta(sessionId),
+    openInfoWindow: ({ sessionId }) => { createInfoWindow(sessionId); },
     popOutSession:  ({ sessionId }) => { createPopoutWindow(sessionId); },
     popInSession:   ({ sessionId }) => {
       const win = findPopout(sessionId);

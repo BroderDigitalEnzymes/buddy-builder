@@ -1,10 +1,13 @@
 import React, { useCallback } from "react";
 import { approvePermission } from "../store.js";
-import { registerToolView, type ToolViewProps } from "./core.js";
+import { registerToolView, type ToolViewProps, type ToolChatEntry } from "./core.js";
 
-// ─── Tool Permission Prompt ────────────────────────────────────────
+// ─── Permission prompt view ─────────────────────────────────────
 
 function PermissionViewRenderer({ entry }: ToolViewProps) {
+  const isPending = entry.status === "permission";
+  const isDenied = entry.status === "blocked";
+
   const handleAllow = useCallback(() => {
     approvePermission(entry.toolUseId, true);
   }, [entry.toolUseId]);
@@ -13,48 +16,38 @@ function PermissionViewRenderer({ entry }: ToolViewProps) {
     approvePermission(entry.toolUseId, false);
   }, [entry.toolUseId]);
 
-  const waiting = entry.status === "permission";
-
   return (
-    <div className={`permission-prompt permission-${entry.status}`}>
+    <div className={`permission-prompt ${isPending ? "" : "permission-done"} ${isDenied ? "permission-blocked" : ""}`}>
       <div className="permission-header">
-        <span className="permission-icon">
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 1a5 5 0 0 0-5 5v2a2 2 0 0 0-1 1.7V13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3.3A2 2 0 0 0 13 8V6a5 5 0 0 0-5-5z" />
-            <circle cx="8" cy="11" r="1" fill="currentColor" />
-          </svg>
-        </span>
+        <span className="permission-icon">{"\u26A0\uFE0F"}</span>
         <span className="permission-label">
-          <strong>{entry.toolName}</strong> requires permission
+          <strong>{entry.toolName}</strong> wants to run
         </span>
       </div>
-      {waiting && (
+      {isPending && (
         <div className="permission-actions">
-          <button className="permission-btn permission-allow" onClick={handleAllow}>
-            Allow
-          </button>
-          <button className="permission-btn permission-deny" onClick={handleDeny}>
-            Deny
-          </button>
+          <button className="permission-btn permission-allow" onClick={handleAllow}>Allow</button>
+          <button className="permission-btn permission-deny" onClick={handleDeny}>Deny</button>
         </div>
       )}
-      {entry.status === "blocked" && (
-        <div className="permission-denied">Denied by user</div>
+      {isDenied && (
+        <div className="permission-denied">Permission denied</div>
       )}
     </div>
   );
 }
 
 registerToolView({
-  id: "tool-permission",
+  id: "permission",
   label: "Permission",
-  match: (entry) => entry.status === "permission" || (entry.status === "blocked" && entry.detail === "Denied by user"),
+  match: (entry: ToolChatEntry) =>
+    entry.status === "permission" || (entry.status === "blocked" && wasPermissionPrompt(entry)),
   render: PermissionViewRenderer,
-  priority: -1, // higher priority than default
+  priority: 0,
   fullReplace: true,
-  summary: (entry) => {
-    if (entry.status === "permission") return `${entry.toolName} — awaiting permission`;
-    if (entry.status === "blocked") return `${entry.toolName} — denied`;
-    return null;
-  },
 });
+
+/** Check if a blocked entry was originally a permission prompt (has toolInput). */
+function wasPermissionPrompt(entry: ToolChatEntry): boolean {
+  return entry.detail?.includes("Blocked by policy") ?? false;
+}

@@ -514,89 +514,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 // ─── Session info popover ────────────────────────────────────────
 
 function SessionInfoButton({ session }: { session: SessionData }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useClickOutside(ref, () => setOpen(false), open);
-
   const hasInfo = session.model || session.tools.length > 0 || session.mcpServers.length > 0 || session.claudeCodeVersion || session.skills.length > 0 || session.agents.length > 0 || session.slashCommands.length > 0;
   if (!hasInfo) return null;
 
   return (
-    <div className="info-popover-wrap" ref={ref}>
-      <button className="chat-header-icon-btn" onClick={() => setOpen((v) => !v)} title="Session info">
-        {"\u2139\uFE0F"}
-      </button>
-      {open && (
-        <div className="info-popover">
-          {session.claudeCodeVersion && (
-            <div className="info-row">
-              <span className="info-label">Version</span>
-              <span>{session.claudeCodeVersion}</span>
-            </div>
-          )}
-          {session.model && (
-            <div className="info-row">
-              <span className="info-label">Model</span>
-              <span>{session.model}</span>
-            </div>
-          )}
-          {session.tools.length > 0 && (
-            <>
-              <div className="info-row">
-                <span className="info-label">Tools ({session.tools.length})</span>
-              </div>
-              <div className="info-tool-list">
-                {session.tools.map((t) => <span key={t} className="info-tool-tag">{t}</span>)}
-              </div>
-            </>
-          )}
-          {session.mcpServers.length > 0 && (
-            <>
-              <div className="info-row">
-                <span className="info-label">MCP Servers</span>
-              </div>
-              {session.mcpServers.map((s) => (
-                <div key={s.name} className="info-mcp-row">
-                  <span>{s.name}</span>
-                  <span className={`info-mcp-status info-mcp-${s.status}`}>{s.status}</span>
-                </div>
-              ))}
-            </>
-          )}
-          {session.skills.length > 0 && (
-            <>
-              <div className="info-row">
-                <span className="info-label">Skills ({session.skills.length})</span>
-              </div>
-              <div className="info-tool-list">
-                {session.skills.map((s) => <span key={s} className="info-tool-tag">/{s}</span>)}
-              </div>
-            </>
-          )}
-          {session.agents.length > 0 && (
-            <>
-              <div className="info-row">
-                <span className="info-label">Agents ({session.agents.length})</span>
-              </div>
-              <div className="info-tool-list">
-                {session.agents.map((a) => <span key={a} className="info-tool-tag">{a}</span>)}
-              </div>
-            </>
-          )}
-          {session.slashCommands.length > 0 && (
-            <>
-              <div className="info-row">
-                <span className="info-label">Commands ({session.slashCommands.length})</span>
-              </div>
-              <div className="info-tool-list">
-                {session.slashCommands.map((c) => <span key={c} className="info-tool-tag">/{c}</span>)}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+    <button
+      className="chat-header-icon-btn"
+      onClick={() => api().openInfoWindow({ sessionId: session.id })}
+      title="Session info"
+    >
+      {"\u2139\uFE0F"}
+    </button>
   );
 }
 

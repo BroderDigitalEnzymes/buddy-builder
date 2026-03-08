@@ -117,6 +117,25 @@ export type AskUserQuestionInput = {
   readonly questions: readonly AskQuestionItem[];
 };
 
+// ─── Session metadata (for info window) ──────────────────────────
+
+export type SessionMeta = {
+  name: string;
+  model: string | null;
+  claudeCodeVersion: string | null;
+  cwd: string | null;
+  permissionMode: PermissionMode;
+  policyPreset: string;
+  tools: string[];
+  mcpServers: { name: string; status: string }[];
+  skills: string[];
+  agents: string[];
+  slashCommands: string[];
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // THE CONTRACT — single source of truth for all IPC
 // ═══════════════════════════════════════════════════════════════════
@@ -150,6 +169,8 @@ export type InvokeContract = {
   pickFolder:        { in: undefined; out: string | null };
   createProjectFolder: { in: { parentDir: string; folderName: string }; out: string };
   takeScreenshot:    { in: { filename?: string } | undefined; out: string };
+  getSessionMeta:    { in: { sessionId: string }; out: SessionMeta };
+  openInfoWindow:    { in: { sessionId: string }; out: void };
   popOutSession:     { in: { sessionId: string }; out: void };
   popInSession:      { in: { sessionId: string }; out: void };
   focusPopout:       { in: { sessionId: string }; out: boolean };
@@ -214,6 +235,7 @@ export const INVOKE_CHANNELS = [
   "listSessions", "updatePolicy", "getPolicy",
   "renameSession", "setFavorite", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
   "getConfig", "setConfig", "pickFolder", "createProjectFolder", "takeScreenshot",
+  "getSessionMeta", "openInfoWindow",
   "popOutSession", "popInSession", "focusPopout",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];

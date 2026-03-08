@@ -12,6 +12,7 @@ import {
   type ImageData,
   type PermissionMode,
   type PolicyPreset,
+  type SessionMeta as IpcSessionMeta,
 } from "../ipc.js";
 import { applyEvent } from "../entry-builder.js";
 import { discoverAllSessions, parseTranscript } from "./transcript.js";
@@ -33,6 +34,17 @@ type ManagedSession = {
   favorite: boolean;
   createdAt: number;
   lastActiveAt: number;
+  // Init metadata (populated on ready event)
+  model: string | null;
+  claudeCodeVersion: string | null;
+  tools: string[];
+  mcpServers: { name: string; status: string }[];
+  skills: string[];
+  agents: string[];
+  slashCommands: string[];
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
 };
 
 type EventSink = (event: SessionEvent) => void;
@@ -80,6 +92,13 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   session.on("ready", (init) => {
     managed.claudeSessionId = init.session_id;
     managed.cwd = managed.cwd ?? init.cwd;
+    managed.model = init.model;
+    managed.claudeCodeVersion = init.claude_code_version ?? null;
+    managed.tools = init.tools;
+    managed.mcpServers = (init.mcp_servers as { name: string; status: string }[] | undefined) ?? [];
+    managed.skills = init.skills ?? [];
+    managed.agents = init.agents ?? [];
+    managed.slashCommands = init.slash_commands ?? [];
     forward({
       kind: "ready", sessionId: id, model: init.model, tools: init.tools,
       mcpServers: init.mcp_servers as { name: string; status: string }[] | undefined,
@@ -116,6 +135,7 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("result", (r) => {
+    managed.totalCost = r.total_cost_usd;
     forward({ kind: "result", sessionId: id, text: r.result ?? "", cost: r.total_cost_usd, turns: r.num_turns, durationMs: r.duration_ms, durationApiMs: r.duration_api_ms, isError: r.is_error });
   });
 
@@ -125,6 +145,8 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
 
   session.on("message", (msg) => {
     if (msg.message.usage) {
+      managed.totalInputTokens += msg.message.usage.input_tokens;
+      managed.totalOutputTokens += msg.message.usage.output_tokens;
       sink({ kind: "usage", sessionId: id, inputTokens: msg.message.usage.input_tokens, outputTokens: msg.message.usage.output_tokens });
     }
   });
@@ -179,6 +201,7 @@ export type SessionManager = {
   getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null };
   list(): SessionInfo[];
   getEntries(id: string): ChatEntry[];
+  getMeta(id: string): IpcSessionMeta;
   setFavorite(id: string, favorite: boolean): void;
   updatePolicy(id: string, policy: ToolPolicyConfig): void;
   getPolicy(id: string): ToolPolicyConfig;
@@ -212,6 +235,16 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       favorite: m.favorite ?? false,
       createdAt: stub.createdAt,
       lastActiveAt: stub.lastActiveAt,
+      model: null,
+      claudeCodeVersion: null,
+      tools: [],
+      mcpServers: [],
+      skills: [],
+      agents: [],
+      slashCommands: [],
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCost: 0,
     };
     sessions.set(id, managed);
   }
@@ -266,6 +299,16 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         favorite: false,
         createdAt: now,
         lastActiveAt: now,
+        model: null,
+        claudeCodeVersion: null,
+        tools: [],
+        mcpServers: [],
+        skills: [],
+        agents: [],
+        slashCommands: [],
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalCost: 0,
       };
       sessions.set(id, managed);
 
@@ -379,6 +422,26 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
     getEntries(id: string): ChatEntry[] {
       return ensureEntries(getManaged(id));
+    },
+
+    getMeta(id: string): IpcSessionMeta {
+      const s = getManaged(id);
+      return {
+        name: s.name,
+        model: s.model,
+        claudeCodeVersion: s.claudeCodeVersion,
+        cwd: s.cwd,
+        permissionMode: s.permissionMode,
+        policyPreset: s.policy.preset,
+        tools: s.tools,
+        mcpServers: s.mcpServers,
+        skills: s.skills,
+        agents: s.agents,
+        slashCommands: s.slashCommands,
+        totalInputTokens: s.totalInputTokens,
+        totalOutputTokens: s.totalOutputTokens,
+        totalCost: s.totalCost,
+      };
     },
 
     setFavorite(id: string, favorite: boolean): void {
