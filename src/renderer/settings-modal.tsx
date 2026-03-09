@@ -117,7 +117,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {status && <div className="setting-status">{status}</div>}
         </div>
         <div className="modal-footer">
-          <span className="settings-version">v1.0.0</span>
+          <span className="settings-version">v{APP_VERSION}</span>
           <button className="modal-btn" onClick={handleSave}>Save</button>
         </div>
       </div>

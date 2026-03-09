@@ -113,13 +113,6 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  // Once the renderer is ready, push the current index status so it doesn't show stale data
-  mainWindow.webContents.on("did-finish-load", () => {
-    if (searchIndex) {
-      mainWindow?.webContents.send("indexProgress", searchIndex.getStatus());
-    }
-  });
-
   if (TEST_MODE) runTestMode();
 }
 

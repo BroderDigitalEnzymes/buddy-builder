@@ -2,6 +2,7 @@ import { build, context } from "esbuild";
 import { cpSync, mkdirSync, readFileSync, writeFileSync, existsSync, watch as fsWatch } from "fs";
 
 const isWatch = process.argv.includes("--watch");
+const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
 
 const shared = {
   bundle: true,
@@ -57,6 +58,7 @@ const configs = [
     format: "iife",
     jsx: "automatic",
     minify: !isWatch,
+    define: { "APP_VERSION": JSON.stringify(pkg.version) },
   },
 ];
 

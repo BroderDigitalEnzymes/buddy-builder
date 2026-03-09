@@ -418,11 +418,17 @@ api().onIndexProgress((status: IndexStatusInfo) => {
   emit();
 });
 
-// Fetch initial index status (in case indexing finished before renderer loaded)
-api().getIndexStatus().then((status) => {
-  state.indexStatus = status;
-  emit();
-});
+// Poll index status until we get real data, then stop
+(function pollIndexStatus() {
+  api().getIndexStatus().then((status) => {
+    state.indexStatus = status;
+    emit();
+    // Keep polling while indexing or if we haven't got data yet
+    if (status.isIndexing || (status.indexedSessions === 0 && status.totalSessions === 0)) {
+      setTimeout(pollIndexStatus, 2000);
+    }
+  });
+})();
 
 // Wire up notification click → focus session
 api().onFocusSession((sessionId: string) => {
