@@ -8,7 +8,10 @@
     "build": "node scripts/build.js",
     "start": "npm run build && npx electron .",
     "dev": "node scripts/build.js --watch & npx electronmon .",
-    "dist": "npm run build && npx electron-builder --win",
+    "dist": "npm run build && npx electron-builder --mac --win --linux",
+    "dist:mac": "npm run build && npx electron-builder --mac",
+    "dist:win": "npm run build && npx electron-builder --win",
+    "dist:linux": "npm run build && npx electron-builder --linux",
     "probe": "npx tsx src/probe.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -46,16 +49,39 @@
       {
         "from": "node_modules/better-sqlite3/build",
         "to": "better-sqlite3-build",
-        "filter": ["**/*.node"]
+        "filter": [
+          "**/*.node"
+        ]
       }
     ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
     "win": {
-      "target": "dir",
+      "target": [
+        "nsis"
+      ],
       "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "eran-broder",
+      "repo": "buddy-builder"
     }
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
+    "electron-updater": "^6.8.3",
     "marked": "^17.0.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

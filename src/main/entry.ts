@@ -9,6 +9,7 @@ import { register, unregister, dispatch, findPopout, broadcast } from "./windows
 import { createSearchIndex, type SearchIndex } from "./search-index.js";
 import { startBackgroundIndex, type BackgroundIndexHandle } from "./search-worker.js";
 import { createTray, destroyTray } from "./tray.js";
+import { autoUpdater } from "electron-updater";
 
 // ─── App identity (must be set before 'ready') ──────────────────
 
@@ -412,6 +413,12 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+
+  // Auto-update: check for new versions on launch
+  autoUpdater.logger = console;
+  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    console.error("[updater]", err);
+  });
 
   createTray({
     onShowWindow: () => {
