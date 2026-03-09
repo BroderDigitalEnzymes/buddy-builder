@@ -1,6 +1,6 @@
 {
   "name": "buddy-builder",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Programmatic wrapper around Claude Code CLI",
   "main": "dist/main.cjs",
   "scripts": {
