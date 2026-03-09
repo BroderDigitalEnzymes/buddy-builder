@@ -28,10 +28,95 @@ var os2 = __toESM(require("os"), 1);
 var path2 = __toESM(require("path"), 1);
 var fs = __toESM(require("fs"), 1);
 
+// src/main/search-text-extractor.ts
+var import_fs = require("fs");
+var MAX_CHUNK_LEN = 2e3;
+function truncate(s, max) {
+  return s.length > max ? s.slice(0, max) : s;
+}
+function extractSearchableText(filePath) {
+  let raw;
+  try {
+    raw = (0, import_fs.readFileSync)(filePath, "utf-8");
+  } catch {
+    return [];
+  }
+  const chunks = [];
+  const lines = raw.split("\n");
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    let obj;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (obj.type === "queue-operation" || obj.type === "progress" || obj.type === "file-history-snapshot" || obj.type === "system") {
+      continue;
+    }
+    if (obj.type === "user" && obj.message?.role === "user") {
+      const content = obj.message.content;
+      if (Array.isArray(content) && content.length > 0 && content[0]?.type === "tool_result") {
+        continue;
+      }
+      const text = extractText(content);
+      if (text) {
+        chunks.push({ contentType: "user", text: truncate(text, MAX_CHUNK_LEN) });
+      }
+      continue;
+    }
+    if (obj.type === "assistant" && obj.message?.role === "assistant") {
+      const content = obj.message.content;
+      if (!Array.isArray(content)) continue;
+      for (const block of content) {
+        if (block.type === "text" && block.text) {
+          chunks.push({
+            contentType: "assistant",
+            text: truncate(block.text, MAX_CHUNK_LEN)
+          });
+        } else if (block.type === "tool_use") {
+          if (block.name) {
+            chunks.push({ contentType: "tool_name", text: block.name });
+          }
+          if (block.input) {
+            const inputStr = typeof block.input === "string" ? block.input : JSON.stringify(block.input);
+            chunks.push({
+              contentType: "tool_input",
+              text: truncate(inputStr, MAX_CHUNK_LEN)
+            });
+          }
+        }
+      }
+      continue;
+    }
+    if (obj.type === "result" && obj.result) {
+      const text = typeof obj.result === "string" ? obj.result : JSON.stringify(obj.result);
+      if (text) {
+        chunks.push({
+          contentType: "tool_result",
+          text: truncate(text, MAX_CHUNK_LEN)
+        });
+      }
+    }
+  }
+  return chunks;
+}
+function extractText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const texts = [];
+    for (const block of content) {
+      if (block.type === "text" && block.text) texts.push(block.text);
+    }
+    return texts.join("\n");
+  }
+  return "";
+}
+
 // src/main/search-index.ts
 var import_better_sqlite3 = __toESM(require("better-sqlite3"), 1);
 var import_path = require("path");
-var import_fs = require("fs");
+var import_fs2 = require("fs");
 function createSearchIndex(customDbPath) {
   let dbPath;
   if (customDbPath) {
@@ -148,7 +233,7 @@ function createSearchIndex(customDbPath) {
     indexSession(sessionId, transcriptPath) {
       let stat;
       try {
-        stat = (0, import_fs.statSync)(transcriptPath);
+        stat = (0, import_fs2.statSync)(transcriptPath);
       } catch {
         return false;
       }
@@ -204,93 +289,11 @@ function createSearchIndex(customDbPath) {
     }
   };
 }
-var MAX_CHUNK_LEN = 2e3;
-function truncate(s, max) {
-  return s.length > max ? s.slice(0, max) : s;
-}
-function extractSearchableText(filePath) {
-  let raw;
-  try {
-    raw = (0, import_fs.readFileSync)(filePath, "utf-8");
-  } catch {
-    return [];
-  }
-  const chunks = [];
-  const lines = raw.split("\n");
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    let obj;
-    try {
-      obj = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (obj.type === "queue-operation" || obj.type === "progress" || obj.type === "file-history-snapshot" || obj.type === "system") {
-      continue;
-    }
-    if (obj.type === "user" && obj.message?.role === "user") {
-      const content = obj.message.content;
-      if (Array.isArray(content) && content.length > 0 && content[0]?.type === "tool_result") {
-        continue;
-      }
-      const text = extractText(content);
-      if (text) {
-        chunks.push({ contentType: "user", text: truncate(text, MAX_CHUNK_LEN) });
-      }
-      continue;
-    }
-    if (obj.type === "assistant" && obj.message?.role === "assistant") {
-      const content = obj.message.content;
-      if (!Array.isArray(content)) continue;
-      for (const block of content) {
-        if (block.type === "text" && block.text) {
-          chunks.push({
-            contentType: "assistant",
-            text: truncate(block.text, MAX_CHUNK_LEN)
-          });
-        } else if (block.type === "tool_use") {
-          if (block.name) {
-            chunks.push({ contentType: "tool_name", text: block.name });
-          }
-          if (block.input) {
-            const inputStr = typeof block.input === "string" ? block.input : JSON.stringify(block.input);
-            chunks.push({
-              contentType: "tool_input",
-              text: truncate(inputStr, MAX_CHUNK_LEN)
-            });
-          }
-        }
-      }
-      continue;
-    }
-    if (obj.type === "result" && obj.result) {
-      const text = typeof obj.result === "string" ? obj.result : JSON.stringify(obj.result);
-      if (text) {
-        chunks.push({
-          contentType: "tool_result",
-          text: truncate(text, MAX_CHUNK_LEN)
-        });
-      }
-    }
-  }
-  return chunks;
-}
-function extractText(content) {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const texts = [];
-    for (const block of content) {
-      if (block.type === "text" && block.text) texts.push(block.text);
-    }
-    return texts.join("\n");
-  }
-  return "";
-}
 
 // src/main/transcript.ts
 var os = __toESM(require("os"), 1);
 var path = __toESM(require("path"), 1);
-var import_fs2 = require("fs");
+var import_fs3 = require("fs");
 function claudeProjectsRoot() {
   return path.join(os.homedir(), ".claude", "projects");
 }
@@ -301,7 +304,7 @@ function discoverAllSessions() {
   const root = claudeProjectsRoot();
   let dirs;
   try {
-    dirs = (0, import_fs2.readdirSync)(root);
+    dirs = (0, import_fs3.readdirSync)(root);
   } catch {
     return [];
   }
@@ -309,7 +312,7 @@ function discoverAllSessions() {
   for (const dir of dirs) {
     const fullPath = path.join(root, dir);
     try {
-      if (!(0, import_fs2.statSync)(fullPath).isDirectory()) continue;
+      if (!(0, import_fs3.statSync)(fullPath).isDirectory()) continue;
     } catch {
       continue;
     }
@@ -321,7 +324,7 @@ function discoverAllSessions() {
 function discoverSessions(projectDir, projectName) {
   let files;
   try {
-    files = (0, import_fs2.readdirSync)(projectDir).filter((f) => f.endsWith(".jsonl"));
+    files = (0, import_fs3.readdirSync)(projectDir).filter((f) => f.endsWith(".jsonl"));
   } catch {
     return [];
   }
@@ -329,7 +332,7 @@ function discoverSessions(projectDir, projectName) {
   for (const file of files) {
     const filePath = path.join(projectDir, file);
     try {
-      if ((0, import_fs2.statSync)(filePath).isDirectory()) continue;
+      if ((0, import_fs3.statSync)(filePath).isDirectory()) continue;
     } catch {
       continue;
     }
@@ -342,7 +345,7 @@ function discoverSessions(projectDir, projectName) {
   return stubs.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 }
 function extractStub(filePath, projectName) {
-  const raw = (0, import_fs2.readFileSync)(filePath, "utf-8");
+  const raw = (0, import_fs3.readFileSync)(filePath, "utf-8");
   const lines = raw.split("\n").filter((l) => l.trim());
   if (lines.length === 0) return null;
   let sessionId = null;

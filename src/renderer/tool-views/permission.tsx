@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { approvePermission } from "../store.js";
+import { approvePermission } from "../store-actions.js";
 import { registerToolView, type ToolViewProps, type ToolChatEntry } from "./core.js";
 
 // ─── Permission prompt view ─────────────────────────────────────

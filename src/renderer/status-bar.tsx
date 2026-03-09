@@ -1,5 +1,6 @@
 import React, { memo, useState, useCallback, useRef, useEffect } from "react";
-import { getState, triggerReindex } from "./store.js";
+import { getState } from "./store.js";
+import { triggerReindex } from "./store-actions.js";
 
 export const StatusBar = memo(function StatusBar() {
   const [showPopup, setShowPopup] = useState(false);

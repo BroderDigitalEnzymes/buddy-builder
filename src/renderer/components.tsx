@@ -22,6 +22,9 @@ export const TitleBar = memo(function TitleBar({ compact, sessionName }: {
 
 export { Sidebar } from "./sidebar.js";
 export { HomeView } from "./home-view.js";
-export { ChatHeader, MessageList, InputBar, EntryRow, ToolEntry, SettingsModal, RateLimitBanner } from "./chat.js";
+export { ChatHeader } from "./chat-header.js";
+export { SettingsModal } from "./settings-modal.js";
+export { InputBar } from "./input-bar.js";
+export { MessageList, EntryRow, ToolEntry, RateLimitBanner } from "./chat.js";
 export { InfoWindow } from "./info-window.js";
 export { StatusBar } from "./status-bar.js";

@@ -202,7 +202,6 @@ export const SessionConfigSchema = z.object({
   allowedTools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),
   systemPrompt: z.string().optional(),
-  appendSystemPrompt: z.string().optional(),
   permissionMode: z.enum(PermissionModes).optional(),
   resumeSessionId: z.string().optional(),
   maxTurns: z.number().positive().optional(),

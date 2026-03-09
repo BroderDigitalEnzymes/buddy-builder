@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { sendMessage } from "../store.js";
+import { sendMessage } from "../store-actions.js";
 import type { ChatEntry } from "../../ipc.js";
 
 // ─── Core types ──────────────────────────────────────────────────

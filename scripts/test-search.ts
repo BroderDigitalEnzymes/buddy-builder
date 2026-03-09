@@ -13,7 +13,8 @@ import { app } from "electron";
 import * as os from "os";
 import * as path from "path";
 import * as fs from "fs";
-import { extractSearchableText, createSearchIndex } from "../src/main/search-index.js";
+import { extractSearchableText } from "../src/main/search-text-extractor.js";
+import { createSearchIndex } from "../src/main/search-index.js";
 import { discoverAllSessions } from "../src/main/transcript.js";
 import { startBackgroundIndex } from "../src/main/search-worker.js";
 

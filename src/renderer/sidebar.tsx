@@ -1,21 +1,14 @@
 import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { pickFolder, type SessionData } from "./store.js";
+import type { SessionData } from "./store.js";
+import { pickFolder } from "./store-actions.js";
 import type { PermissionMode } from "../ipc.js";
-import { SettingsModal, PolicyPicker, PERM_ITEMS } from "./chat.js";
+import { SettingsModal } from "./settings-modal.js";
+import { PolicyPicker, PERM_ITEMS } from "./chat-header.js";
 import { useDrag } from "./hooks.js";
 import { api } from "./utils.js";
-
-// ─── Folder name sanitizer ────────────────────────────────────────
-
-function sanitizeFolderName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9\-_]/g, "")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-}
+import { relativeTime } from "./time.js";
+import { buildDirTree, countSessions, type DirTreeNode, type DirTree } from "./dir-tree.js";
+import { sanitizeFolderName, fuzzyMatch, sessionMatchesQuery, splitSessions } from "./session-filters.js";
 
 // ─── Naming modal ─────────────────────────────────────────────────
 
@@ -71,36 +64,6 @@ function NamingModal({ defaultFolder, onConfirm, onCancel }: NamingModalProps) {
       </div>
     </div>
   );
-}
-
-// ─── Fuzzy match ─────────────────────────────────────────────────
-
-function fuzzyMatch(query: string, target: string): boolean {
-  const q = query.toLowerCase();
-  const t = target.toLowerCase();
-  let qi = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++;
-  }
-  return qi === q.length;
-}
-
-// ─── Relative time ───────────────────────────────────────────────
-
-function relativeTime(ts: number): string {
-  const delta = Date.now() - ts;
-  const sec = Math.floor(delta / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const days = Math.floor(hr / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
 }
 
 // ─── Editable session label ──────────────────────────────────────
@@ -161,90 +124,6 @@ function EditableSessionLabel({ name, onRename }: EditableSessionLabelProps) {
       {name}
     </span>
   );
-}
-
-// ─── Directory tree types and builder ────────────────────────────
-
-type DirTreeNode = {
-  segment: string;
-  fullPath: string;
-  children: Map<string, DirTreeNode>;
-  sessions: SessionData[];
-};
-
-type DirTree = {
-  commonPrefix: string;
-  roots: DirTreeNode[];
-  rootSessions: SessionData[];
-  unknown: SessionData[];
-};
-
-function pathSegments(p: string): string[] {
-  return p.split("/").filter(Boolean);
-}
-
-function findCommonPrefix(paths: string[]): string {
-  if (paths.length === 0) return "";
-  const segArrays = paths.map(pathSegments);
-  const minLen = Math.min(...segArrays.map(s => s.length));
-  let shared = 0;
-  for (let i = 0; i < minLen; i++) {
-    if (segArrays.every(a => a[i] === segArrays[0][i])) shared = i + 1;
-    else break;
-  }
-  if (shared === 0) return "/";
-  return "/" + segArrays[0].slice(0, shared).join("/");
-}
-
-function countSessions(node: DirTreeNode): number {
-  let count = node.sessions.length;
-  for (const child of node.children.values()) count += countSessions(child);
-  return count;
-}
-
-function buildDirTree(sessions: SessionData[], filter: string): DirTree {
-  const q = filter.trim();
-  const unknown: SessionData[] = [];
-  const withCwd: SessionData[] = [];
-
-  for (const s of sessions) {
-    if (q && !fuzzyMatch(q, s.name) && !fuzzyMatch(q, s.cwd ?? "") && !fuzzyMatch(q, s.projectName)) continue;
-    if (s.cwd) withCwd.push(s);
-    else unknown.push(s);
-  }
-
-  const cwds = withCwd.map(s => s.cwd!);
-  const commonPrefix = findCommonPrefix(cwds);
-  const prefixSegs = pathSegments(commonPrefix);
-  const rootMap = new Map<string, DirTreeNode>();
-  const rootSessions: SessionData[] = [];
-
-  for (const s of withCwd) {
-    const segs = pathSegments(s.cwd!);
-    const relSegs = segs.slice(prefixSegs.length);
-
-    if (relSegs.length === 0) {
-      rootSessions.push(s);
-      continue;
-    }
-
-    let currentMap = rootMap;
-    let currentPath = commonPrefix;
-    let node: DirTreeNode | undefined;
-
-    for (const seg of relSegs) {
-      currentPath = currentPath + "/" + seg;
-      if (!currentMap.has(seg)) {
-        currentMap.set(seg, { segment: seg, fullPath: currentPath, children: new Map(), sessions: [] });
-      }
-      node = currentMap.get(seg)!;
-      currentMap = node.children;
-    }
-    node!.sessions.push(s);
-  }
-
-  const roots = [...rootMap.values()].sort((a, b) => a.segment.localeCompare(b.segment));
-  return { commonPrefix, roots, rootSessions, unknown };
 }
 
 // ─── Session item ────────────────────────────────────────────────
@@ -541,36 +420,15 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
   const isSearching = search.trim().length > 0;
   const q = search.trim();
 
-  // Split into live vs history
-  const liveSessions = useMemo(() => sessions.filter((s) => s.state !== "dead"), [sessions]);
+  // Split into live / pinned / history via pure module
+  const pinnedIds = useMemo(() => new Set(sessions.filter(s => s.favorite).map(s => s.id)), [sessions]);
+  const { live: filteredLive, pinned: pinnedSessions, history: historySessions, historyAll: historyForTree } = useMemo(
+    () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT),
+    [sessions, q, pinnedIds],
+  );
 
-  const liveTree = useMemo(() => buildDirTree(liveSessions, search), [liveSessions, search]);
-
-  // Pinned sessions (favorites) — shown at top of history, any state
-  const pinnedSessions = useMemo(() => {
-    let pinned = sessions.filter((s) => s.favorite && s.state === "dead");
-    if (q) pinned = pinned.filter(s => fuzzyMatch(q, s.name) || fuzzyMatch(q, s.cwd ?? "") || fuzzyMatch(q, s.projectName));
-    pinned.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
-    return pinned;
-  }, [sessions, q]);
-
-  const pinnedIds = useMemo(() => new Set(pinnedSessions.map(s => s.id)), [pinnedSessions]);
-
-  // History: flat list, sorted by recency, capped, filterable (excludes pinned)
-  const historySessions = useMemo(() => {
-    let dead = sessions.filter((s) => s.state === "dead" && !pinnedIds.has(s.id));
-    if (q) dead = dead.filter(s => fuzzyMatch(q, s.name) || fuzzyMatch(q, s.cwd ?? "") || fuzzyMatch(q, s.projectName));
-    dead.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
-    return dead.slice(0, HISTORY_LIMIT);
-  }, [sessions, q, pinnedIds]);
-
-  const historyForTree = useMemo(() => {
-    let dead = sessions.filter((s) => s.state === "dead");
-    if (q) dead = dead.filter(s => fuzzyMatch(q, s.name) || fuzzyMatch(q, s.cwd ?? "") || fuzzyMatch(q, s.projectName));
-    return dead;
-  }, [sessions, q]);
-
-  const historyTree = useMemo(() => buildDirTree(historyForTree, ""), [historyForTree]);
+  const liveTree = useMemo(() => buildDirTree(filteredLive), [filteredLive]);
+  const historyTree = useMemo(() => buildDirTree(historyForTree), [historyForTree]);
 
   const toggleLive = useCallback((p: string) => {
     setLiveExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });

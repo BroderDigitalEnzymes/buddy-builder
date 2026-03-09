@@ -407,11 +407,13 @@ body {
   font-size: 15px;
   cursor: pointer;
   color: var(--text-muted);
+  opacity: 0.3;
   padding: 2px 4px;
-  transition: color 0.15s, transform 0.15s;
+  flex-shrink: 0;
+  transition: color 0.15s, transform 0.15s, opacity 0.15s;
 }
-.hcard-star:hover { color: var(--text); transform: scale(1.2); }
-.hcard-star.starred { color: var(--warning); }
+.hcard-star:hover { color: var(--text); opacity: 1; transform: scale(1.2); }
+.hcard-star.starred { color: var(--warning); opacity: 1; }
 
 .hcard-btn {
   padding: 4px 12px;
@@ -446,6 +448,46 @@ body {
 .hcard-btn-danger:hover {
   background: color-mix(in srgb, var(--error) 12%, transparent);
   border-color: var(--error);
+}
+
+/* ─── Session action buttons (shared) ─── */
+
+.session-action-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.sa-btn svg { flex-shrink: 0; }
+.sa-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.sa-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.sa-btn-primary:hover {
+  background: color-mix(in srgb, var(--accent) 85%, #fff);
+  border-color: color-mix(in srgb, var(--accent) 85%, #fff);
+  color: #fff;
 }
 
 /* ─── View toggle (list/tree) ─── */
@@ -1611,6 +1653,15 @@ body {
   font-size: 14px;
   transition: background 0.15s, border-color 0.15s;
 }
+.policy-picker-trigger.icon .policy-picker-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-primary);
+}
+.policy-picker-trigger.icon .policy-picker-icon svg {
+  width: 16px;
+  height: 16px;
+}
 .policy-picker-trigger.icon:hover {
   background: var(--hover-bg);
   border-color: var(--border-strong);
@@ -1631,7 +1682,8 @@ body {
   color: var(--text);
 }
 
-.policy-picker-icon { font-size: 15px; }
+.policy-picker-icon { display: flex; align-items: center; }
+.policy-picker-icon svg { width: 14px; height: 14px; }
 .policy-picker-label { flex: 1; text-align: left; }
 
 /* sidebar context: fill available space */
@@ -1707,7 +1759,8 @@ body {
   font-weight: 600;
 }
 
-.policy-dropdown-icon { font-size: 15px; width: 20px; text-align: center; }
+.policy-dropdown-icon { display: flex; align-items: center; justify-content: center; width: 20px; }
+.policy-dropdown-icon svg { width: 14px; height: 14px; }
 .policy-dropdown-label { flex: 1; text-align: left; }
 .policy-dropdown-check { color: var(--accent); font-size: 14px; }
 

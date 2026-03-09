@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, memo } from "react";
 import type { SessionData } from "./store.js";
+import { getState } from "./store.js";
 import {
   openInApp,
   createSession,
@@ -11,96 +12,12 @@ import {
   focusPopout,
   pickFolder,
   setSearchQuery,
-  getState,
-} from "./store.js";
-import { SettingsModal } from "./chat.js";
+} from "./store-actions.js";
+import { SettingsModal } from "./settings-modal.js";
+import { SessionActionButtons } from "./session-actions.js";
 import type { PermissionMode } from "../ipc.js";
-
-// ─── Helpers ────────────────────────────────────────────────────
-
-function timeAgo(ts: number): string {
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return "just now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
-}
-
-// ─── Directory tree types and builder ────────────────────────────
-
-type DirTreeNode = {
-  segment: string;
-  fullPath: string;
-  children: Map<string, DirTreeNode>;
-  sessions: SessionData[];
-};
-
-function pathSegments(p: string): string[] {
-  return p.split("/").filter(Boolean);
-}
-
-function findCommonPrefix(paths: string[]): string {
-  if (paths.length === 0) return "";
-  const segArrays = paths.map(pathSegments);
-  const minLen = Math.min(...segArrays.map(s => s.length));
-  let shared = 0;
-  for (let i = 0; i < minLen; i++) {
-    if (segArrays.every(a => a[i] === segArrays[0][i])) shared = i + 1;
-    else break;
-  }
-  if (shared === 0) return "/";
-  return "/" + segArrays[0].slice(0, shared).join("/");
-}
-
-function countSessions(node: DirTreeNode): number {
-  let count = node.sessions.length;
-  for (const child of node.children.values()) count += countSessions(child);
-  return count;
-}
-
-type DirTree = {
-  commonPrefix: string;
-  roots: DirTreeNode[];
-  rootSessions: SessionData[];
-  unknown: SessionData[];
-};
-
-function buildDirTree(sessions: SessionData[]): DirTree {
-  const unknown: SessionData[] = [];
-  const withCwd: SessionData[] = [];
-  for (const s of sessions) {
-    if (s.cwd) withCwd.push(s);
-    else unknown.push(s);
-  }
-  const cwds = withCwd.map(s => s.cwd!);
-  const commonPrefix = findCommonPrefix(cwds);
-  const prefixSegs = pathSegments(commonPrefix);
-  const rootMap = new Map<string, DirTreeNode>();
-  const rootSessions: SessionData[] = [];
-
-  for (const s of withCwd) {
-    const segs = pathSegments(s.cwd!);
-    const relSegs = segs.slice(prefixSegs.length);
-    if (relSegs.length === 0) { rootSessions.push(s); continue; }
-    let currentMap = rootMap;
-    let currentPath = commonPrefix;
-    let node: DirTreeNode | undefined;
-    for (const seg of relSegs) {
-      currentPath = currentPath + "/" + seg;
-      if (!currentMap.has(seg)) {
-        currentMap.set(seg, { segment: seg, fullPath: currentPath, children: new Map(), sessions: [] });
-      }
-      node = currentMap.get(seg)!;
-      currentMap = node.children;
-    }
-    node!.sessions.push(s);
-  }
-  const roots = [...rootMap.values()].sort((a, b) => a.segment.localeCompare(b.segment));
-  return { commonPrefix, roots, rootSessions, unknown };
-}
+import { relativeTime } from "./time.js";
+import { buildDirTree, countSessions, type DirTreeNode } from "./dir-tree.js";
 
 // ─── Session card (rich inline card) ────────────────────────────
 
@@ -123,9 +40,13 @@ function SessionCard({ session, poppedOut }: {
       onClick={handleClick}
     >
       <div className="hcard-top">
-        <div className="hcard-status">
-          <span className={`hcard-dot state-${session.state}`} />
-        </div>
+        <button
+          className={`hcard-star ${session.favorite ? "starred" : ""}`}
+          onClick={(e) => { e.stopPropagation(); toggleFavorite(session.id); }}
+          title={session.favorite ? "Unfavorite" : "Favorite"}
+        >
+          {session.favorite ? "\u2605" : "\u2606"}
+        </button>
         <div className="hcard-info">
           <div className="hcard-name-row">
             <span className="hcard-name">{session.name}</span>
@@ -134,36 +55,33 @@ function SessionCard({ session, poppedOut }: {
           {session.cwd && <span className="hcard-cwd">{session.cwd}</span>}
         </div>
         <div className="hcard-meta">
-          <span className="hcard-time">{timeAgo(session.lastActiveAt)}</span>
+          <span className="hcard-time">{relativeTime(session.lastActiveAt)}</span>
           {session.model && <span className="hcard-model">{session.model}</span>}
         </div>
       </div>
       <div className="hcard-actions" onClick={(e) => e.stopPropagation()}>
-        <button
-          className={`hcard-star ${session.favorite ? "starred" : ""}`}
-          onClick={() => toggleFavorite(session.id)}
-          title={session.favorite ? "Unfavorite" : "Favorite"}
-        >
-          {session.favorite ? "\u2605" : "\u2606"}
-        </button>
-        {!isDead && (
-          <button className="hcard-btn" onClick={() => openInApp(session.id)}>Open</button>
-        )}
-        {isDead && (
-          <button className="hcard-btn" onClick={() => openInApp(session.id)}>View</button>
-        )}
-        {canResume && (
+        {canResume ? (
+          <SessionActionButtons
+            claudeSessionId={session.claudeSessionId}
+            cwd={session.cwd}
+            permissionMode={session.permissionMode}
+            showView
+            onView={() => openInApp(session.id)}
+            onResume={() => { resumeSession(session.id); openInApp(session.id); }}
+            onResumeTerminal={() => resumeInTerminal(session.id)}
+          />
+        ) : (
           <>
-            <button className="hcard-btn hcard-btn-primary" onClick={() => { resumeSession(session.id); openInApp(session.id); }}>
-              Resume
-            </button>
-            <button className="hcard-btn" onClick={() => resumeInTerminal(session.id)}>
-              Terminal
-            </button>
+            {!isDead && (
+              <button className="hcard-btn" onClick={() => openInApp(session.id)}>Open</button>
+            )}
+            {isDead && (
+              <button className="hcard-btn" onClick={() => openInApp(session.id)}>View</button>
+            )}
+            {!isDead && (
+              <button className="hcard-btn hcard-btn-muted" onClick={() => killSession(session.id)}>Kill</button>
+            )}
           </>
-        )}
-        {!isDead && (
-          <button className="hcard-btn hcard-btn-muted" onClick={() => killSession(session.id)}>Kill</button>
         )}
         <button className="hcard-btn hcard-btn-danger" onClick={() => deleteSession(session.id)}>
           Delete
@@ -189,7 +107,7 @@ function SearchResultCard({ result, onOpen }: {
           {result.cwd && <span className="hcard-cwd">{result.cwd}</span>}
         </div>
         <div className="hcard-meta">
-          <span className="hcard-time">{timeAgo(result.lastActiveAt)}</span>
+          <span className="hcard-time">{relativeTime(result.lastActiveAt)}</span>
         </div>
       </div>
       <span

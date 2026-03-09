@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as path from "path";
 import * as fs from "fs";
-import { spawn as spawnChild } from "child_process";
 import { registerHandlers, type Handlers } from "../ipc.js";
+import { openInTerminal } from "./terminal-launcher.js";
 import { createSessionManager, type SessionManager } from "./manager.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { register, unregister, dispatch, findPopout, closeAllPopouts, broadcast } from "./windows.js";
@@ -178,12 +178,7 @@ function setupIpc(mgr: SessionManager): void {
     resumeSession:     ({ sessionId }) => mgr.resume(sessionId),
     resumeInTerminal:  ({ sessionId }) => {
       const { claudeSessionId, cwd } = mgr.getResumeInfo(sessionId);
-      const dir = cwd ?? process.env.HOME ?? "~";
-      const cmd = `cd ${dir} && claude --resume ${claudeSessionId}`;
-      spawnChild("osascript", [
-        "-e", `tell application "Terminal" to activate`,
-        "-e", `tell application "Terminal" to do script ${JSON.stringify(cmd)}`,
-      ], { detached: true, stdio: "ignore" });
+      openInTerminal(cwd ?? process.env.HOME ?? process.env.USERPROFILE ?? ".", `claude --resume ${claudeSessionId}`);
     },
     deleteSession:     ({ sessionId }) => { mgr.remove(sessionId); },
     getSessionEntries: ({ sessionId }) => mgr.getEntries(sessionId),
@@ -350,9 +345,10 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", async () => {
+app.on("window-all-closed", () => {
   bgIndexHandle?.cancel();
   searchIndex?.close();
-  await manager?.dispose();
+  // Kill all sessions without waiting — dispose() waits up to 2s per session
+  manager?.dispose();
   app.quit();
 });

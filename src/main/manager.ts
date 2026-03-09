@@ -14,9 +14,9 @@ import {
   type PolicyPreset,
   type SessionMeta as IpcSessionMeta,
 } from "../ipc.js";
-import { applyEvent } from "../entry-builder.js";
 import { discoverAllSessions, parseTranscript } from "./transcript.js";
 import { loadMeta, updateSessionMeta, deleteSessionMeta, type SessionMeta } from "./session-meta.js";
+import { wireSession } from "./session-wiring.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -45,41 +45,10 @@ type ManagedSession = {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCost: number;
-  // Auto-naming
-  autoNamed: boolean;   // title tag already extracted (or not needed)
   userNamed: boolean;   // user explicitly set the name (rename or creation option)
-  turnCount: number;
 };
 
 type EventSink = (event: SessionEvent) => void;
-
-// ─── Auto-naming ────────────────────────────────────────────────
-
-const TITLE_TAG_RE = /<session-title>([\s\S]*?)<\/session-title>/;
-
-const NAMING_INSTRUCTION = [
-  "After your third response in this conversation, include exactly once a hidden tag",
-  "with a short 3-6 word title summarizing what this conversation is about:",
-  "<session-title>short descriptive title</session-title>",
-  "Place it at the very end of your message. Do this only once, never again after that.",
-].join(" ");
-
-/** Extract and strip the <session-title> tag from text. Returns [cleanText, title | null]. */
-function extractTitle(text: string): [string, string | null] {
-  const match = text.match(TITLE_TAG_RE);
-  if (!match) return [text, null];
-  const title = match[1].trim();
-  const clean = text.replace(TITLE_TAG_RE, "").trimEnd();
-  return [clean, title || null];
-}
-
-// Separate instruction for resumed sessions — "next response" instead of "third response"
-const NAMING_INSTRUCTION_RESUME = [
-  "In your next response, include exactly once a hidden tag",
-  "with a short 3-6 word title summarizing what this conversation is about:",
-  "<session-title>short descriptive title</session-title>",
-  "Place it at the very end of your message. Do this only once, never again after that.",
-].join(" ");
 
 // ─── Build a ToolPolicy function from a config ──────────────────
 
@@ -104,142 +73,6 @@ function buildToolPolicy(config: ToolPolicyConfig, permissionMode: PermissionMod
     }
     return { action: "allow" as const };
   };
-}
-
-// ─── Wire a session's events and build entries ───────────────────
-
-function wireSession(managed: ManagedSession, session: Session, sink: EventSink): void {
-  const id = managed.id;
-
-  // Ensure entries array exists for live sessions
-  if (!managed.entries) managed.entries = [];
-
-  // Helper: build a SessionEvent from a session-layer event, apply to entries, and forward to renderer.
-  function forward(event: SessionEvent): void {
-    applyEvent(managed.entries!, event);
-    managed.lastActiveAt = Date.now();
-    sink(event);
-  }
-
-  session.on("ready", (init) => {
-    managed.claudeSessionId = init.session_id;
-    managed.cwd = managed.cwd ?? init.cwd;
-    managed.model = init.model;
-    managed.claudeCodeVersion = init.claude_code_version ?? null;
-    managed.tools = init.tools;
-    managed.mcpServers = (init.mcp_servers as { name: string; status: string }[] | undefined) ?? [];
-    managed.skills = init.skills ?? [];
-    managed.agents = init.agents ?? [];
-    managed.slashCommands = init.slash_commands ?? [];
-    forward({
-      kind: "ready", sessionId: id, model: init.model, tools: init.tools,
-      mcpServers: init.mcp_servers as { name: string; status: string }[] | undefined,
-      claudeCodeVersion: init.claude_code_version,
-      cwd: init.cwd,
-      skills: init.skills,
-      agents: init.agents,
-      slashCommands: init.slash_commands,
-    });
-  });
-
-  session.on("textDelta", (ev) => {
-    let text = ev.text;
-    // Strip title tag fragments from streaming deltas (best-effort)
-    if (!managed.autoNamed && !ev.parentToolUseId) {
-      text = text.replace(TITLE_TAG_RE, "");
-    }
-    if (text) {
-      forward({ kind: "textDelta", sessionId: id, text, parentToolUseId: ev.parentToolUseId });
-    }
-  });
-
-  session.on("text", (ev) => {
-    let text = ev.text;
-
-    // Auto-naming: scan top-level text messages for the title tag
-    if (!managed.autoNamed && !ev.parentToolUseId) {
-      managed.turnCount++;
-      const [clean, title] = extractTitle(text);
-      if (title) {
-        text = clean;
-        managed.autoNamed = true;
-        managed.name = title;
-        if (managed.claudeSessionId) {
-          updateSessionMeta(managed.claudeSessionId, { name: title });
-        }
-        sink({ kind: "nameChanged", sessionId: id, name: title });
-      }
-    }
-
-    forward({ kind: "text", sessionId: id, text, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("toolStart", (ev) => {
-    forward({ kind: "toolStart", sessionId: id, toolName: ev.toolName, toolInput: ev.toolInput, toolUseId: ev.toolUseId, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("toolEnd", (ev) => {
-    forward({ kind: "toolEnd", sessionId: id, toolName: ev.toolName, toolUseId: ev.toolUseId, response: ev.response });
-  });
-
-  session.on("toolBlocked", (ev) => {
-    forward({ kind: "toolBlocked", sessionId: id, toolName: ev.toolName, toolUseId: ev.toolUseId, reason: ev.reason, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("toolPermission", (ev) => {
-    forward({ kind: "toolPermission", sessionId: id, toolName: ev.toolName, toolInput: ev.toolInput, toolUseId: ev.toolUseId, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("result", (r) => {
-    managed.totalCost = r.total_cost_usd;
-    forward({ kind: "result", sessionId: id, text: r.result ?? "", cost: r.total_cost_usd, turns: r.num_turns, durationMs: r.duration_ms, durationApiMs: r.duration_api_ms, isError: r.is_error });
-  });
-
-  session.on("rateLimit", (ev) => {
-    forward({ kind: "rateLimit", sessionId: id, resetsAt: ev.rate_limit_info.resetsAt, status: ev.rate_limit_info.status });
-  });
-
-  session.on("message", (msg) => {
-    if (msg.message.usage) {
-      managed.totalInputTokens += msg.message.usage.input_tokens;
-      managed.totalOutputTokens += msg.message.usage.output_tokens;
-      sink({ kind: "usage", sessionId: id, inputTokens: msg.message.usage.input_tokens, outputTokens: msg.message.usage.output_tokens });
-    }
-  });
-
-  session.on("stop", (ev) => {
-    forward({ kind: "stop", sessionId: id, stopHookActive: ev.stopHookActive });
-  });
-
-  session.on("systemMessage", (text) => {
-    forward({ kind: "systemMessage", sessionId: id, text });
-  });
-
-  session.on("notification", (ev) => {
-    forward({ kind: "notification", sessionId: id, title: ev.title, body: ev.body });
-  });
-
-  session.on("compact", (ev: { trigger: string; preTokens: number | null }) => {
-    forward({ kind: "compact", sessionId: id, trigger: ev.trigger, preTokens: ev.preTokens });
-  });
-
-  session.on("stateChange", (ev) => {
-    console.log(`[stateChange] ${id.slice(0, 8)} ${ev.from} → ${ev.to}`);
-    sink({ kind: "stateChange", sessionId: id, from: ev.from, to: ev.to });
-  });
-
-  session.on("warn", (msg) => {
-    sink({ kind: "warn", sessionId: id, message: msg });
-  });
-
-  session.on("error", (err) => {
-    forward({ kind: "error", sessionId: id, message: err.message });
-  });
-
-  session.on("exit", (ev) => {
-    managed.session = null;
-    forward({ kind: "exit", sessionId: id, code: ev.code });
-  });
 }
 
 // ─── Session Manager ────────────────────────────────────────────
@@ -302,9 +135,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCost: 0,
-      autoNamed: true,  // don't scan until resumed
       userNamed: !!m.name,  // true if user explicitly renamed via metadata
-      turnCount: 0,
     };
     sessions.set(id, managed);
   }
@@ -339,7 +170,6 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         cwd: cwd ?? undefined,
         model: options?.model,
         systemPrompt: options?.systemPrompt,
-        appendSystemPrompt: options?.name ? undefined : NAMING_INSTRUCTION,
         maxTurns: options?.maxTurns,
       };
 
@@ -370,9 +200,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalCost: 0,
-        autoNamed: !!options?.name,
         userNamed: !!options?.name,
-        turnCount: 0,
       };
       sessions.set(id, managed);
 
@@ -433,7 +261,6 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const managed = getManaged(id);
       managed.name = name;
       managed.userNamed = true;
-      managed.autoNamed = true; // stop scanning
       managed.lastActiveAt = Date.now();
       if (managed.claudeSessionId) {
         updateSessionMeta(managed.claudeSessionId, { name });
@@ -446,21 +273,12 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       if (managed.session) throw new Error("Session is already alive");
       if (!managed.claudeSessionId) throw new Error("No Claude session ID to resume");
 
-      // Inject naming instruction if the user never explicitly named this session
-      const shouldAutoName = !managed.userNamed;
-
       const config: SessionConfig = {
         claudePath,
         permissionMode: managed.permissionMode,
         resumeSessionId: managed.claudeSessionId,
         cwd: managed.cwd ?? undefined,
-        appendSystemPrompt: shouldAutoName ? NAMING_INSTRUCTION_RESUME : undefined,
       };
-
-      if (shouldAutoName) {
-        managed.autoNamed = false;
-        managed.turnCount = 0;
-      }
 
       const session = await createSession(config);
       managed.session = session;
