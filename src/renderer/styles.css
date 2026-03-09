@@ -338,6 +338,27 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: default;
+}
+
+.hcard-name-input {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  outline: none;
+  width: 100%;
+  font-family: inherit;
+}
+
+.hcard-btn-rename {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px !important;
 }
 
 .hcard-badge {

@@ -1,4 +1,8 @@
 import { randomUUID } from "crypto";
+import { spawn as spawnChild } from "child_process";
+import * as os from "os";
+import * as path from "path";
+import { readFileSync } from "fs";
 import { createSession, type Session, type SessionConfig } from "../index.js";
 import {
   DEFAULT_POLICY,
@@ -15,7 +19,7 @@ import {
   type SessionMeta as IpcSessionMeta,
 } from "../ipc.js";
 import { applyEvent } from "../entry-builder.js";
-import { discoverAllSessions, parseTranscript } from "./transcript.js";
+import { discoverAllSessions, parseTranscript, claudeProjectDir } from "./transcript.js";
 import { loadMeta, updateSessionMeta, deleteSessionMeta, type SessionMeta } from "./session-meta.js";
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -54,32 +58,131 @@ type ManagedSession = {
 type EventSink = (event: SessionEvent) => void;
 
 // ─── Auto-naming ────────────────────────────────────────────────
+//
+// Runs `claude -p "..."` as a simple subprocess to get a title for the
+// conversation. No hooks, no streaming — just a one-shot command.
 
-const TITLE_TAG_RE = /<session-title>([\s\S]*?)<\/session-title>/;
+const AUTO_NAME_TURN_THRESHOLD = 3;
 
-const NAMING_INSTRUCTION = [
-  "After your third response in this conversation, include exactly once a hidden tag",
-  "with a short 3-6 word title summarizing what this conversation is about:",
-  "<session-title>short descriptive title</session-title>",
-  "Place it at the very end of your message. Do this only once, never again after that.",
-].join(" ");
+/** Extract a compact summary of the conversation for the naming prompt.
+ *  Returns null if there aren't enough user turns (< AUTO_NAME_TURN_THRESHOLD). */
+function buildNamingContext(managed: ManagedSession): string | null {
+  const origSessionId = managed.claudeSessionId;
+  const origCwd = managed.cwd;
+  if (!origSessionId || !origCwd) return null;
 
-/** Extract and strip the <session-title> tag from text. Returns [cleanText, title | null]. */
-function extractTitle(text: string): [string, string | null] {
-  const match = text.match(TITLE_TAG_RE);
-  if (!match) return [text, null];
-  const title = match[1].trim();
-  const clean = text.replace(TITLE_TAG_RE, "").trimEnd();
-  return [clean, title || null];
+  const origProjectDir = claudeProjectDir(origCwd);
+  const filePath = managed.transcriptPath ?? path.join(origProjectDir, `${origSessionId}.jsonl`);
+
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  const lines = raw.split("\n").filter(l => l.trim());
+  const exchanges: string[] = [];
+  let userTurns = 0;
+  let totalExchanges = 0;
+
+  for (const line of lines) {
+    if (totalExchanges >= 10) break;
+    try {
+      const obj = JSON.parse(line);
+      if (obj.type === "user" && obj.message?.content) {
+        const text = Array.isArray(obj.message.content)
+          ? obj.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ")
+          : typeof obj.message.content === "string" ? obj.message.content : "";
+        if (text && !text.startsWith("[tool_result")) {
+          exchanges.push(`User: ${text.slice(0, 200)}`);
+          userTurns++;
+          totalExchanges++;
+        }
+      } else if (obj.type === "assistant" && obj.message?.content) {
+        const text = Array.isArray(obj.message.content)
+          ? obj.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ")
+          : "";
+        if (text) {
+          exchanges.push(`Assistant: ${text.slice(0, 200)}`);
+          totalExchanges++;
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // Need at least AUTO_NAME_TURN_THRESHOLD user turns
+  if (userTurns < AUTO_NAME_TURN_THRESHOLD) return null;
+
+  return exchanges.join("\n");
 }
 
-// Separate instruction for resumed sessions — "next response" instead of "third response"
-const NAMING_INSTRUCTION_RESUME = [
-  "In your next response, include exactly once a hidden tag",
-  "with a short 3-6 word title summarizing what this conversation is about:",
-  "<session-title>short descriptive title</session-title>",
-  "Place it at the very end of your message. Do this only once, never again after that.",
-].join(" ");
+/**
+ * Run `claude -p "..."` to get a title. Simple subprocess, no hooks.
+ */
+async function requestAutoName(
+  managed: ManagedSession,
+  claudePath: string,
+  sink: EventSink,
+): Promise<void> {
+  const context = buildNamingContext(managed);
+  if (!context) return;
+
+  const prompt =
+    "Here is a conversation between a user and an AI assistant:\n\n" +
+    context + "\n\n" +
+    "Reply with ONLY a short 3-6 word title that summarizes this conversation. " +
+    "No quotes, no punctuation, no explanation — just the title words.";
+
+  try {
+    // Strip CLAUDECODE from env so the subprocess doesn't think it's nested
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+
+    const rawTitle = await new Promise<string>((resolve, reject) => {
+      const child = spawnChild(
+        claudePath,
+        ["-p", prompt, "--no-session-persistence", "--max-turns", "1"],
+        { stdio: ["ignore", "pipe", "pipe"], env },
+      );
+
+      let stdout = "";
+      let stderr = "";
+
+      child.stdout!.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr!.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error("Naming timed out"));
+      }, 30_000);
+
+      child.on("error", (err) => { clearTimeout(timer); reject(err); });
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        if (code !== 0) reject(new Error(`claude exited with code ${code}: ${stderr.slice(0, 200)}`));
+        else resolve(stdout);
+      });
+    });
+
+    const title = rawTitle
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .replace(/\.+$/, "")
+      .trim();
+
+    if (title && title.length < 80) {
+      managed.autoNamed = true;
+      managed.name = title;
+      if (managed.claudeSessionId) {
+        updateSessionMeta(managed.claudeSessionId, { name: title });
+      }
+      sink({ kind: "nameChanged", sessionId: managed.id, name: title });
+    }
+  } catch (err) {
+    console.error("[auto-name] failed:", err);
+  }
+}
 
 // ─── Build a ToolPolicy function from a config ──────────────────
 
@@ -108,7 +211,7 @@ function buildToolPolicy(config: ToolPolicyConfig, permissionMode: PermissionMod
 
 // ─── Wire a session's events and build entries ───────────────────
 
-function wireSession(managed: ManagedSession, session: Session, sink: EventSink): void {
+function wireSession(managed: ManagedSession, session: Session, sink: EventSink, claudePath: string): void {
   const id = managed.id;
 
   // Ensure entries array exists for live sessions
@@ -143,35 +246,20 @@ function wireSession(managed: ManagedSession, session: Session, sink: EventSink)
   });
 
   session.on("textDelta", (ev) => {
-    let text = ev.text;
-    // Strip title tag fragments from streaming deltas (best-effort)
-    if (!managed.autoNamed && !ev.parentToolUseId) {
-      text = text.replace(TITLE_TAG_RE, "");
-    }
-    if (text) {
-      forward({ kind: "textDelta", sessionId: id, text, parentToolUseId: ev.parentToolUseId });
-    }
+    forward({ kind: "textDelta", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
   });
 
   session.on("text", (ev) => {
-    let text = ev.text;
-
-    // Auto-naming: scan top-level text messages for the title tag
+    // Count top-level assistant turns for auto-naming trigger
     if (!managed.autoNamed && !ev.parentToolUseId) {
       managed.turnCount++;
-      const [clean, title] = extractTitle(text);
-      if (title) {
-        text = clean;
-        managed.autoNamed = true;
-        managed.name = title;
-        if (managed.claudeSessionId) {
-          updateSessionMeta(managed.claudeSessionId, { name: title });
-        }
-        sink({ kind: "nameChanged", sessionId: id, name: title });
+      if (managed.turnCount >= AUTO_NAME_TURN_THRESHOLD) {
+        managed.autoNamed = true; // prevent re-triggering
+        requestAutoName(managed, claudePath, sink).catch((err) => console.error("[auto-name] failed:", err));
       }
     }
 
-    forward({ kind: "text", sessionId: id, text, parentToolUseId: ev.parentToolUseId });
+    forward({ kind: "text", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
   });
 
   session.on("toolStart", (ev) => {
@@ -338,7 +426,6 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         cwd: cwd ?? undefined,
         model: options?.model,
         systemPrompt: options?.systemPrompt,
-        appendSystemPrompt: options?.name ? undefined : NAMING_INSTRUCTION,
         maxTurns: options?.maxTurns,
       };
 
@@ -376,7 +463,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       sessions.set(id, managed);
 
       session.setToolPolicy(buildToolPolicy(policy, permMode));
-      wireSession(managed, session, sink);
+      wireSession(managed, session, sink, claudePath);
       return id;
     },
 
@@ -445,20 +532,20 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       if (managed.session) throw new Error("Session is already alive");
       if (!managed.claudeSessionId) throw new Error("No Claude session ID to resume");
 
-      // Inject naming instruction if the user never explicitly named this session
-      const shouldAutoName = !managed.userNamed;
-
       const config: SessionConfig = {
         claudePath,
         permissionMode: managed.permissionMode,
         resumeSessionId: managed.claudeSessionId,
         cwd: managed.cwd ?? undefined,
-        appendSystemPrompt: shouldAutoName ? NAMING_INSTRUCTION_RESUME : undefined,
       };
 
-      if (shouldAutoName) {
+      // Enable auto-naming on resume if user never explicitly named this session
+      if (!managed.userNamed) {
         managed.autoNamed = false;
         managed.turnCount = 0;
+        // For discovered sessions that already have conversation history,
+        // trigger naming immediately instead of waiting for 3 more turns
+        requestAutoName(managed, claudePath, sink).catch(() => {});
       }
 
       const session = await createSession(config);
@@ -469,7 +556,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       ensureEntries(managed).push({ kind: "system", text: "Session resumed.", ts: Date.now() });
       managed.lastActiveAt = Date.now();
 
-      wireSession(managed, session, sink);
+      wireSession(managed, session, sink, claudePath);
 
       // Emit stateChange so renderer picks up the alive state
       sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });

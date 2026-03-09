@@ -56,6 +56,9 @@ export function discoverAllSessions(): SessionStub[] {
 
   const allStubs: SessionStub[] = [];
   for (const dir of dirs) {
+    // Skip temp directories created by auto-naming forks
+    if (dir.includes("buddy-naming-")) continue;
+
     const fullPath = path.join(root, dir);
     try {
       if (!statSync(fullPath).isDirectory()) continue;

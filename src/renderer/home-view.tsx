@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, memo } from "react";
+import React, { useState, useCallback, useRef, useMemo, memo } from "react";
 import type { SessionData } from "./store.js";
 import {
   openInApp,
@@ -7,6 +7,7 @@ import {
   killSession,
   resumeSession,
   resumeInTerminal,
+  renameSession,
   toggleFavorite,
   focusPopout,
   pickFolder,
@@ -110,10 +111,34 @@ function SessionCard({ session, poppedOut }: {
   const isBusy = session.state === "busy";
   const canResume = isDead && !!session.claudeSessionId;
 
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const handleClick = useCallback(() => {
     if (poppedOut) { focusPopout(session.id); return; }
     openInApp(session.id);
   }, [session.id, poppedOut]);
+
+  const startRename = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditValue(session.name);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  }, [session.name]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== session.name) {
+      renameSession(session.id, trimmed);
+    }
+    setEditing(false);
+  }, [editValue, session.id, session.name]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { commitRename(); }
+    else if (e.key === "Escape") { setEditing(false); }
+  }, [commitRename]);
 
   return (
     <div
@@ -126,7 +151,22 @@ function SessionCard({ session, poppedOut }: {
         </div>
         <div className="hcard-info">
           <div className="hcard-name-row">
-            <span className="hcard-name">{session.name}</span>
+            {editing ? (
+              <input
+                ref={inputRef}
+                className="hcard-name-input"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={handleKeyDown}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+              />
+            ) : (
+              <span className="hcard-name" onDoubleClick={startRename} title="Double-click to rename">
+                {session.name}
+              </span>
+            )}
             {poppedOut && <span className="hcard-badge">Popout</span>}
           </div>
           {session.cwd && <span className="hcard-cwd">{session.cwd}</span>}
@@ -143,6 +183,11 @@ function SessionCard({ session, poppedOut }: {
           title={session.favorite ? "Unfavorite" : "Favorite"}
         >
           {session.favorite ? "\u2605" : "\u2606"}
+        </button>
+        <button className="hcard-btn hcard-btn-rename" onClick={startRename} title="Rename">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M11.5 1.5l3 3-9 9H2.5v-3l9-9z" />
+          </svg>
         </button>
         {!isDead && (
           <button className="hcard-btn" onClick={() => openInApp(session.id)}>Open</button>
