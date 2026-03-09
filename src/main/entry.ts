@@ -1,11 +1,13 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as path from "path";
 import * as fs from "fs";
-import { spawn as spawnChild } from "child_process";
 import { registerHandlers, type Handlers } from "../ipc.js";
+import { openInTerminal } from "./terminal-launcher.js";
 import { createSessionManager, type SessionManager } from "./manager.js";
 import { loadConfig, saveConfig } from "./config.js";
-import { register, unregister, dispatch, findPopout, closeAllPopouts } from "./windows.js";
+import { register, unregister, dispatch, findPopout, closeAllPopouts, broadcast } from "./windows.js";
+import { createSearchIndex, type SearchIndex } from "./search-index.js";
+import { startBackgroundIndex, type BackgroundIndexHandle } from "./search-worker.js";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -36,6 +38,8 @@ dialog.showErrorBox = (title: string, content: string) => {
 
 let mainWindow: BrowserWindow | null = null;
 let manager: SessionManager | null = null;
+let searchIndex: SearchIndex | null = null;
+let bgIndexHandle: BackgroundIndexHandle | null = null;
 
 // ─── Shared window factory ──────────────────────────────────────
 
@@ -174,12 +178,7 @@ function setupIpc(mgr: SessionManager): void {
     resumeSession:     ({ sessionId }) => mgr.resume(sessionId),
     resumeInTerminal:  ({ sessionId }) => {
       const { claudeSessionId, cwd } = mgr.getResumeInfo(sessionId);
-      const dir = cwd ?? process.env.HOME ?? "~";
-      const cmd = `cd ${dir} && claude --resume ${claudeSessionId}`;
-      spawnChild("osascript", [
-        "-e", `tell application "Terminal" to activate`,
-        "-e", `tell application "Terminal" to do script ${JSON.stringify(cmd)}`,
-      ], { detached: true, stdio: "ignore" });
+      openInTerminal(cwd ?? process.env.HOME ?? process.env.USERPROFILE ?? ".", `claude --resume ${claudeSessionId}`);
     },
     deleteSession:     ({ sessionId }) => { mgr.remove(sessionId); },
     getSessionEntries: ({ sessionId }) => mgr.getEntries(sessionId),
@@ -220,6 +219,34 @@ function setupIpc(mgr: SessionManager): void {
       const win = findPopout(sessionId);
       if (win && !win.isDestroyed()) { win.focus(); return true; }
       return false;
+    },
+    searchSessions: ({ query, limit }) => {
+      if (!searchIndex || !manager) return [];
+      const raw = searchIndex.search(query, limit);
+      // Enrich with session names from manager
+      const sessionMap = new Map(manager.list().map((s) => [s.id, s]));
+      return raw.map((r) => {
+        const info = sessionMap.get(r.sessionId);
+        return {
+          sessionId: r.sessionId,
+          sessionName: info?.name ?? "Unknown",
+          projectName: info?.projectName ?? "",
+          cwd: info?.cwd ?? null,
+          snippet: r.snippet,
+          contentType: r.contentType,
+          lastActiveAt: info?.lastActiveAt ?? 0,
+          rank: r.rank,
+        };
+      }).filter((r) => r.lastActiveAt > 0); // drop sessions that no longer exist
+    },
+    getIndexStatus: () => searchIndex?.getStatus() ?? { totalSessions: 0, indexedSessions: 0, isIndexing: false },
+    triggerReindex: () => {
+      if (!searchIndex || !manager) return;
+      bgIndexHandle?.cancel();
+      const sessions = manager.getIndexableData();
+      bgIndexHandle = startBackgroundIndex(searchIndex, sessions, (status) => {
+        broadcast("indexProgress", status);
+      });
     },
     winMinimize:    () => { BrowserWindow.getFocusedWindow()?.minimize(); },
     winMaximize:    () => {
@@ -262,8 +289,55 @@ function setupIpc(mgr: SessionManager): void {
 
 app.whenReady().then(() => {
   const config = loadConfig();
-  manager = createSessionManager(dispatch, config.claudePath);
+
+  // Wrap dispatch to also schedule re-indexing on result/exit events
+  const reindexTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const wrappedDispatch = (event: import("../ipc.js").SessionEvent) => {
+    dispatch(event);
+
+    if (
+      searchIndex &&
+      manager &&
+      (event.kind === "result" || event.kind === "exit")
+    ) {
+      // Debounce 2s per session
+      const existing = reindexTimers.get(event.sessionId);
+      if (existing) clearTimeout(existing);
+      reindexTimers.set(
+        event.sessionId,
+        setTimeout(() => {
+          reindexTimers.delete(event.sessionId);
+          if (!searchIndex || !manager) return;
+          const data = manager.getIndexableData().find(
+            (d) => d.sessionId === event.sessionId
+          );
+          if (data?.transcriptPath) {
+            try {
+              searchIndex.indexSession(data.sessionId, data.transcriptPath);
+              broadcast("indexProgress", searchIndex.getStatus());
+            } catch (err) {
+              console.error("[search] live re-index failed:", err);
+            }
+          }
+        }, 2000)
+      );
+    }
+  };
+
+  manager = createSessionManager(wrappedDispatch, config.claudePath);
   setupIpc(manager);
+
+  // Initialize search index and start background indexing
+  try {
+    searchIndex = createSearchIndex();
+    const sessions = manager.getIndexableData();
+    bgIndexHandle = startBackgroundIndex(searchIndex, sessions, (status) => {
+      broadcast("indexProgress", status);
+    });
+  } catch (err) {
+    console.error("[search] Failed to create search index:", err);
+  }
+
   createWindow();
 
   app.on("activate", () => {
@@ -271,7 +345,10 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", async () => {
-  await manager?.dispose();
+app.on("window-all-closed", () => {
+  bgIndexHandle?.cancel();
+  searchIndex?.close();
+  // Kill all sessions without waiting — dispose() waits up to 2s per session
+  manager?.dispose();
   app.quit();
 });

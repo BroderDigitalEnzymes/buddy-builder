@@ -3,6 +3,11 @@ import { createRoot } from "react-dom/client";
 import {
   useStoreVersion,
   getState,
+  IS_POPOUT,
+  IS_INFO,
+  INFO_SESSION_ID,
+} from "./store.js";
+import {
   switchSession,
   createSession,
   sendMessage,
@@ -20,18 +25,13 @@ import {
   focusPopout,
   navigateHome,
   openInApp,
-  IS_POPOUT,
-  IS_INFO,
-  INFO_SESSION_ID,
-} from "./store.js";
+} from "./store-actions.js";
 import { TitleBar, InfoWindow } from "./components.js";
-import {
-  ChatHeader,
-  MessageList,
-  InputBar,
-  RateLimitBanner,
-} from "./chat.js";
+import { ChatHeader } from "./chat-header.js";
+import { MessageList, RateLimitBanner } from "./chat.js";
+import { InputBar } from "./input-bar.js";
 import { HomeView } from "./home-view.js";
+import { StatusBar } from "./status-bar.js";
 import type { ImageData, PolicyPreset } from "../ipc.js";
 
 function App() {
@@ -98,6 +98,9 @@ function App() {
         queueCount={activeSession?.messageQueue.length ?? 0}
         showResume={showResume}
         slashCommands={mergedSlashCommands}
+        claudeSessionId={activeSession?.claudeSessionId ?? null}
+        cwd={activeSession?.cwd ?? null}
+        permissionMode={activeSession?.permissionMode}
         onSend={handleSend}
         onInterrupt={handleInterrupt}
         onResume={handleResume}
@@ -131,6 +134,7 @@ function App() {
       {currentView === "chat" ? chatArea : (
         <HomeView sessions={sessionList} poppedOutIds={poppedOutIds} />
       )}
+      <StatusBar />
     </>
   );
 }

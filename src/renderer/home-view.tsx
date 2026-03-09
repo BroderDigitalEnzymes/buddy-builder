@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useMemo, memo } from "react";
 import type { SessionData } from "./store.js";
+import { getState } from "./store.js";
 import {
   openInApp,
   createSession,
@@ -11,95 +12,13 @@ import {
   toggleFavorite,
   focusPopout,
   pickFolder,
-} from "./store.js";
-import { SettingsModal } from "./chat.js";
+  setSearchQuery,
+} from "./store-actions.js";
+import { SettingsModal } from "./settings-modal.js";
+import { SessionActionButtons } from "./session-actions.js";
 import type { PermissionMode } from "../ipc.js";
-
-// ─── Helpers ────────────────────────────────────────────────────
-
-function timeAgo(ts: number): string {
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return "just now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
-}
-
-// ─── Directory tree types and builder ────────────────────────────
-
-type DirTreeNode = {
-  segment: string;
-  fullPath: string;
-  children: Map<string, DirTreeNode>;
-  sessions: SessionData[];
-};
-
-function pathSegments(p: string): string[] {
-  return p.split("/").filter(Boolean);
-}
-
-function findCommonPrefix(paths: string[]): string {
-  if (paths.length === 0) return "";
-  const segArrays = paths.map(pathSegments);
-  const minLen = Math.min(...segArrays.map(s => s.length));
-  let shared = 0;
-  for (let i = 0; i < minLen; i++) {
-    if (segArrays.every(a => a[i] === segArrays[0][i])) shared = i + 1;
-    else break;
-  }
-  if (shared === 0) return "/";
-  return "/" + segArrays[0].slice(0, shared).join("/");
-}
-
-function countSessions(node: DirTreeNode): number {
-  let count = node.sessions.length;
-  for (const child of node.children.values()) count += countSessions(child);
-  return count;
-}
-
-type DirTree = {
-  commonPrefix: string;
-  roots: DirTreeNode[];
-  rootSessions: SessionData[];
-  unknown: SessionData[];
-};
-
-function buildDirTree(sessions: SessionData[]): DirTree {
-  const unknown: SessionData[] = [];
-  const withCwd: SessionData[] = [];
-  for (const s of sessions) {
-    if (s.cwd) withCwd.push(s);
-    else unknown.push(s);
-  }
-  const cwds = withCwd.map(s => s.cwd!);
-  const commonPrefix = findCommonPrefix(cwds);
-  const prefixSegs = pathSegments(commonPrefix);
-  const rootMap = new Map<string, DirTreeNode>();
-  const rootSessions: SessionData[] = [];
-
-  for (const s of withCwd) {
-    const segs = pathSegments(s.cwd!);
-    const relSegs = segs.slice(prefixSegs.length);
-    if (relSegs.length === 0) { rootSessions.push(s); continue; }
-    let currentMap = rootMap;
-    let currentPath = commonPrefix;
-    let node: DirTreeNode | undefined;
-    for (const seg of relSegs) {
-      currentPath = currentPath + "/" + seg;
-      if (!currentMap.has(seg)) {
-        currentMap.set(seg, { segment: seg, fullPath: currentPath, children: new Map(), sessions: [] });
-      }
-      node = currentMap.get(seg)!;
-      currentMap = node.children;
-    }
-    node!.sessions.push(s);
-  }
-  const roots = [...rootMap.values()].sort((a, b) => a.segment.localeCompare(b.segment));
-  return { commonPrefix, roots, rootSessions, unknown };
-}
+import { relativeTime } from "./time.js";
+import { buildDirTree, countSessions, type DirTreeNode } from "./dir-tree.js";
 
 // ─── Session card (rich inline card) ────────────────────────────
 
@@ -146,9 +65,13 @@ function SessionCard({ session, poppedOut }: {
       onClick={handleClick}
     >
       <div className="hcard-top">
-        <div className="hcard-status">
-          <span className={`hcard-dot state-${session.state}`} />
-        </div>
+        <button
+          className={`hcard-star ${session.favorite ? "starred" : ""}`}
+          onClick={(e) => { e.stopPropagation(); toggleFavorite(session.id); }}
+          title={session.favorite ? "Unfavorite" : "Favorite"}
+        >
+          {session.favorite ? "\u2605" : "\u2606"}
+        </button>
         <div className="hcard-info">
           <div className="hcard-name-row">
             {editing ? (
@@ -172,46 +95,70 @@ function SessionCard({ session, poppedOut }: {
           {session.cwd && <span className="hcard-cwd">{session.cwd}</span>}
         </div>
         <div className="hcard-meta">
-          <span className="hcard-time">{timeAgo(session.lastActiveAt)}</span>
+          <span className="hcard-time">{relativeTime(session.lastActiveAt)}</span>
           {session.model && <span className="hcard-model">{session.model}</span>}
         </div>
       </div>
       <div className="hcard-actions" onClick={(e) => e.stopPropagation()}>
-        <button
-          className={`hcard-star ${session.favorite ? "starred" : ""}`}
-          onClick={() => toggleFavorite(session.id)}
-          title={session.favorite ? "Unfavorite" : "Favorite"}
-        >
-          {session.favorite ? "\u2605" : "\u2606"}
-        </button>
         <button className="hcard-btn hcard-btn-rename" onClick={startRename} title="Rename">
           <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M11.5 1.5l3 3-9 9H2.5v-3l9-9z" />
           </svg>
         </button>
-        {!isDead && (
-          <button className="hcard-btn" onClick={() => openInApp(session.id)}>Open</button>
-        )}
-        {isDead && (
-          <button className="hcard-btn" onClick={() => openInApp(session.id)}>View</button>
-        )}
-        {canResume && (
+        {canResume ? (
+          <SessionActionButtons
+            claudeSessionId={session.claudeSessionId}
+            cwd={session.cwd}
+            permissionMode={session.permissionMode}
+            showView
+            onView={() => openInApp(session.id)}
+            onResume={() => { resumeSession(session.id); openInApp(session.id); }}
+            onResumeTerminal={() => resumeInTerminal(session.id)}
+          />
+        ) : (
           <>
-            <button className="hcard-btn hcard-btn-primary" onClick={() => { resumeSession(session.id); openInApp(session.id); }}>
-              Resume
-            </button>
-            <button className="hcard-btn" onClick={() => resumeInTerminal(session.id)}>
-              Terminal
-            </button>
+            {!isDead && (
+              <button className="hcard-btn" onClick={() => openInApp(session.id)}>Open</button>
+            )}
+            {isDead && (
+              <button className="hcard-btn" onClick={() => openInApp(session.id)}>View</button>
+            )}
+            {!isDead && (
+              <button className="hcard-btn hcard-btn-muted" onClick={() => killSession(session.id)}>Kill</button>
+            )}
           </>
-        )}
-        {!isDead && (
-          <button className="hcard-btn hcard-btn-muted" onClick={() => killSession(session.id)}>Kill</button>
         )}
         <button className="hcard-btn hcard-btn-danger" onClick={() => deleteSession(session.id)}>
           Delete
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Search result card ─────────────────────────────────────────
+
+function SearchResultCard({ result, onOpen }: {
+  result: { sessionId: string; sessionName: string; cwd: string | null; snippet: string; lastActiveAt: number };
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="hcard search-result" onClick={() => onOpen(result.sessionId)}>
+      <div className="hcard-top">
+        <div className="hcard-info">
+          <div className="hcard-name-row">
+            <span className="hcard-name">{result.sessionName}</span>
+          </div>
+          {result.cwd && <span className="hcard-cwd">{result.cwd}</span>}
+        </div>
+        <div className="hcard-meta">
+          <span className="hcard-time">{relativeTime(result.lastActiveAt)}</span>
+        </div>
+      </div>
+      <span
+        className="search-snippet"
+        dangerouslySetInnerHTML={{ __html: result.snippet }}
+      />
     </div>
   );
 }
@@ -266,14 +213,15 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
   sessions: SessionData[];
   poppedOutIds: Set<string>;
 }) {
-  const [search, setSearch] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "tree">("list");
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
 
+  const { searchQuery, searchResults } = getState();
+
   // Filter sessions
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = searchQuery.toLowerCase();
     const list = q
       ? sessions.filter((s) =>
           s.name.toLowerCase().includes(q) ||
@@ -284,7 +232,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
       if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
       return b.lastActiveAt - a.lastActiveAt;
     });
-  }, [sessions, search]);
+  }, [sessions, searchQuery]);
 
   // Group for list view
   const live = filtered.filter((s) => s.state !== "dead");
@@ -308,6 +256,19 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
     });
   }, []);
 
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleSearchClear = useCallback(() => {
+    setSearchQuery("");
+  }, []);
+
+  const handleOpenResult = useCallback((id: string) => {
+    if (poppedOutIds.has(id)) { focusPopout(id); return; }
+    openInApp(id);
+  }, [poppedOutIds]);
+
   // Toggle icons
   const listIcon = (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -319,6 +280,9 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
       <path d="M2 2v12" /><path d="M6 6h8" /><path d="M6 10h6" /><path d="M2 6h4" /><path d="M2 10h4" />
     </svg>
   );
+
+  // Use search results when available, otherwise fall back to name/cwd filter
+  const showSearchResults = searchResults !== null && searchQuery.trim().length > 0;
 
   return (
     <>
@@ -332,12 +296,12 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
               <input
                 className="home-search-input"
                 type="text"
-                placeholder="Search sessions..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search sessions and content..."
+                value={searchQuery}
+                onChange={handleSearchChange}
               />
-              {search && (
-                <button className="home-search-clear" onClick={() => setSearch("")}>
+              {searchQuery && (
+                <button className="home-search-clear" onClick={handleSearchClear}>
                   {"\u00D7"}
                 </button>
               )}
@@ -364,63 +328,83 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
           </div>
 
           <div className="home-grid">
-            {filtered.length === 0 && (
-              <div className="home-empty">
-                {search ? `No sessions match "${search}"` : "No sessions yet. Start a new one!"}
-              </div>
-            )}
-
-            {viewMode === "list" ? (
+            {showSearchResults ? (
+              // Full-text search results
               <>
-                {live.length > 0 && (
-                  <div className="home-section">
-                    <div className="home-section-label">Active Sessions</div>
-                    {live.map((s) => (
-                      <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
-                    ))}
+                {searchResults.length === 0 && (
+                  <div className="home-empty">
+                    No results for "{searchQuery}"
                   </div>
                 )}
-                {dead.length > 0 && (
-                  <div className="home-section">
-                    {live.length > 0 && <div className="home-section-label">Recent</div>}
-                    {dead.map((s) => (
-                      <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
-                    ))}
-                  </div>
-                )}
+                {searchResults.map((r) => (
+                  <SearchResultCard
+                    key={r.sessionId}
+                    result={r}
+                    onOpen={handleOpenResult}
+                  />
+                ))}
               </>
             ) : (
               <>
-                {dirTree.commonPrefix && dirTree.commonPrefix !== "/" && (
-                  <div className="htree-prefix">{dirTree.commonPrefix}</div>
+                {filtered.length === 0 && (
+                  <div className="home-empty">
+                    {searchQuery ? `No sessions match "${searchQuery}"` : "No sessions yet. Start a new one!"}
+                  </div>
                 )}
-                {dirTree.roots.map(node => (
-                  <TreeNodeView
-                    key={node.fullPath}
-                    node={node}
-                    poppedOutIds={poppedOutIds}
-                    expandedPaths={expandedPaths}
-                    onToggle={handleToggleTree}
-                  />
-                ))}
-                {dirTree.rootSessions.map(s => (
-                  <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
-                ))}
-                {dirTree.unknown.length > 0 && (
-                  <div className="htree-node">
-                    <button className="htree-header" onClick={() => handleToggleTree("__unknown__")}>
-                      <span className="htree-toggle">{!expandedPaths.has("__unknown__") ? "\u25BE" : "\u25B8"}</span>
-                      <span className="htree-name">(no directory)</span>
-                      <span className="htree-count">{dirTree.unknown.length}</span>
-                    </button>
-                    {!expandedPaths.has("__unknown__") && (
-                      <div className="htree-children">
-                        {dirTree.unknown.map(s => (
+
+                {viewMode === "list" ? (
+                  <>
+                    {live.length > 0 && (
+                      <div className="home-section">
+                        <div className="home-section-label">Active Sessions</div>
+                        {live.map((s) => (
                           <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
                         ))}
                       </div>
                     )}
-                  </div>
+                    {dead.length > 0 && (
+                      <div className="home-section">
+                        {live.length > 0 && <div className="home-section-label">Recent</div>}
+                        {dead.map((s) => (
+                          <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {dirTree.commonPrefix && dirTree.commonPrefix !== "/" && (
+                      <div className="htree-prefix">{dirTree.commonPrefix}</div>
+                    )}
+                    {dirTree.roots.map(node => (
+                      <TreeNodeView
+                        key={node.fullPath}
+                        node={node}
+                        poppedOutIds={poppedOutIds}
+                        expandedPaths={expandedPaths}
+                        onToggle={handleToggleTree}
+                      />
+                    ))}
+                    {dirTree.rootSessions.map(s => (
+                      <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
+                    ))}
+                    {dirTree.unknown.length > 0 && (
+                      <div className="htree-node">
+                        <button className="htree-header" onClick={() => handleToggleTree("__unknown__")}>
+                          <span className="htree-toggle">{!expandedPaths.has("__unknown__") ? "\u25BE" : "\u25B8"}</span>
+                          <span className="htree-name">(no directory)</span>
+                          <span className="htree-count">{dirTree.unknown.length}</span>
+                        </button>
+                        {!expandedPaths.has("__unknown__") && (
+                          <div className="htree-children">
+                            {dirTree.unknown.map(s => (
+                              <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

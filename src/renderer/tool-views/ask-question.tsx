@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { answerQuestion } from "../store.js";
+import { answerQuestion } from "../store-actions.js";
 import type { AskUserQuestionInput, AskQuestionItem } from "../../ipc.js";
 import { registerToolView, type ToolViewProps, type ToolChatEntry } from "./core.js";
 

@@ -136,6 +136,25 @@ export type SessionMeta = {
   totalCost: number;
 };
 
+// ─── Search types ────────────────────────────────────────────────
+
+export type SearchResultItem = {
+  sessionId: string;
+  sessionName: string;
+  projectName: string;
+  cwd: string | null;
+  snippet: string;
+  contentType: string;
+  lastActiveAt: number;
+  rank: number;
+};
+
+export type IndexStatusInfo = {
+  totalSessions: number;
+  indexedSessions: number;
+  isIndexing: boolean;
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // THE CONTRACT — single source of truth for all IPC
 // ═══════════════════════════════════════════════════════════════════
@@ -174,6 +193,9 @@ export type InvokeContract = {
   popOutSession:     { in: { sessionId: string }; out: void };
   popInSession:      { in: { sessionId: string }; out: void };
   focusPopout:       { in: { sessionId: string }; out: boolean };
+  searchSessions:    { in: { query: string; limit?: number }; out: SearchResultItem[] };
+  getIndexStatus:    { in: undefined; out: IndexStatusInfo };
+  triggerReindex:    { in: undefined; out: void };
   winMinimize:       { in: undefined; out: void };
   winMaximize:       { in: undefined; out: void };
   winClose:          { in: undefined; out: void };
@@ -182,6 +204,7 @@ export type InvokeContract = {
 /** Event channels: main pushes, renderer listens. */
 export type EventContract = {
   sessionEvent: SessionEvent;
+  indexProgress: IndexStatusInfo;
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -237,11 +260,12 @@ export const INVOKE_CHANNELS = [
   "getConfig", "setConfig", "pickFolder", "createProjectFolder", "takeScreenshot",
   "getSessionMeta", "openInfoWindow",
   "popOutSession", "popInSession", "focusPopout",
+  "searchSessions", "getIndexStatus", "triggerReindex",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];
 
 /** Event channel names (must match EventContract keys). */
-export const EVENT_CHANNELS = ["sessionEvent"] as const satisfies readonly (keyof EventContract)[];
+export const EVENT_CHANNELS = ["sessionEvent", "indexProgress"] as const satisfies readonly (keyof EventContract)[];
 
 // ═══════════════════════════════════════════════════════════════════
 // BRIDGE FACTORIES — plain objects for contextBridge compatibility

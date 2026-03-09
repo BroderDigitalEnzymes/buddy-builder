@@ -18,9 +18,9 @@ import {
   type PolicyPreset,
   type SessionMeta as IpcSessionMeta,
 } from "../ipc.js";
-import { applyEvent } from "../entry-builder.js";
 import { discoverAllSessions, parseTranscript, claudeProjectDir } from "./transcript.js";
 import { loadMeta, updateSessionMeta, deleteSessionMeta, type SessionMeta } from "./session-meta.js";
+import { wireSession } from "./session-wiring.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ type ManagedSession = {
   totalOutputTokens: number;
   totalCost: number;
   // Auto-naming
-  autoNamed: boolean;   // title tag already extracted (or not needed)
+  autoNamed: boolean;
   userNamed: boolean;   // user explicitly set the name (rename or creation option)
   turnCount: number;
 };
@@ -209,127 +209,6 @@ function buildToolPolicy(config: ToolPolicyConfig, permissionMode: PermissionMod
   };
 }
 
-// ─── Wire a session's events and build entries ───────────────────
-
-function wireSession(managed: ManagedSession, session: Session, sink: EventSink, claudePath: string): void {
-  const id = managed.id;
-
-  // Ensure entries array exists for live sessions
-  if (!managed.entries) managed.entries = [];
-
-  // Helper: build a SessionEvent from a session-layer event, apply to entries, and forward to renderer.
-  function forward(event: SessionEvent): void {
-    applyEvent(managed.entries!, event);
-    managed.lastActiveAt = Date.now();
-    sink(event);
-  }
-
-  session.on("ready", (init) => {
-    managed.claudeSessionId = init.session_id;
-    managed.cwd = managed.cwd ?? init.cwd;
-    managed.model = init.model;
-    managed.claudeCodeVersion = init.claude_code_version ?? null;
-    managed.tools = init.tools;
-    managed.mcpServers = (init.mcp_servers as { name: string; status: string }[] | undefined) ?? [];
-    managed.skills = init.skills ?? [];
-    managed.agents = init.agents ?? [];
-    managed.slashCommands = init.slash_commands ?? [];
-    forward({
-      kind: "ready", sessionId: id, model: init.model, tools: init.tools,
-      mcpServers: init.mcp_servers as { name: string; status: string }[] | undefined,
-      claudeCodeVersion: init.claude_code_version,
-      cwd: init.cwd,
-      skills: init.skills,
-      agents: init.agents,
-      slashCommands: init.slash_commands,
-    });
-  });
-
-  session.on("textDelta", (ev) => {
-    forward({ kind: "textDelta", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("text", (ev) => {
-    // Count top-level assistant turns for auto-naming trigger
-    if (!managed.autoNamed && !ev.parentToolUseId) {
-      managed.turnCount++;
-      if (managed.turnCount >= AUTO_NAME_TURN_THRESHOLD) {
-        managed.autoNamed = true; // prevent re-triggering
-        requestAutoName(managed, claudePath, sink).catch((err) => console.error("[auto-name] failed:", err));
-      }
-    }
-
-    forward({ kind: "text", sessionId: id, text: ev.text, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("toolStart", (ev) => {
-    forward({ kind: "toolStart", sessionId: id, toolName: ev.toolName, toolInput: ev.toolInput, toolUseId: ev.toolUseId, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("toolEnd", (ev) => {
-    forward({ kind: "toolEnd", sessionId: id, toolName: ev.toolName, toolUseId: ev.toolUseId, response: ev.response });
-  });
-
-  session.on("toolBlocked", (ev) => {
-    forward({ kind: "toolBlocked", sessionId: id, toolName: ev.toolName, toolUseId: ev.toolUseId, reason: ev.reason, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("toolPermission", (ev) => {
-    forward({ kind: "toolPermission", sessionId: id, toolName: ev.toolName, toolInput: ev.toolInput, toolUseId: ev.toolUseId, parentToolUseId: ev.parentToolUseId });
-  });
-
-  session.on("result", (r) => {
-    managed.totalCost = r.total_cost_usd;
-    forward({ kind: "result", sessionId: id, text: r.result ?? "", cost: r.total_cost_usd, turns: r.num_turns, durationMs: r.duration_ms, durationApiMs: r.duration_api_ms, isError: r.is_error });
-  });
-
-  session.on("rateLimit", (ev) => {
-    forward({ kind: "rateLimit", sessionId: id, resetsAt: ev.rate_limit_info.resetsAt, status: ev.rate_limit_info.status });
-  });
-
-  session.on("message", (msg) => {
-    if (msg.message.usage) {
-      managed.totalInputTokens += msg.message.usage.input_tokens;
-      managed.totalOutputTokens += msg.message.usage.output_tokens;
-      sink({ kind: "usage", sessionId: id, inputTokens: msg.message.usage.input_tokens, outputTokens: msg.message.usage.output_tokens });
-    }
-  });
-
-  session.on("stop", (ev) => {
-    forward({ kind: "stop", sessionId: id, stopHookActive: ev.stopHookActive });
-  });
-
-  session.on("systemMessage", (text) => {
-    forward({ kind: "systemMessage", sessionId: id, text });
-  });
-
-  session.on("notification", (ev) => {
-    forward({ kind: "notification", sessionId: id, title: ev.title, body: ev.body });
-  });
-
-  session.on("compact", (ev: { trigger: string; preTokens: number | null }) => {
-    forward({ kind: "compact", sessionId: id, trigger: ev.trigger, preTokens: ev.preTokens });
-  });
-
-  session.on("stateChange", (ev) => {
-    console.log(`[stateChange] ${id.slice(0, 8)} ${ev.from} → ${ev.to}`);
-    sink({ kind: "stateChange", sessionId: id, from: ev.from, to: ev.to });
-  });
-
-  session.on("warn", (msg) => {
-    sink({ kind: "warn", sessionId: id, message: msg });
-  });
-
-  session.on("error", (err) => {
-    forward({ kind: "error", sessionId: id, message: err.message });
-  });
-
-  session.on("exit", (ev) => {
-    managed.session = null;
-    forward({ kind: "exit", sessionId: id, code: ev.code });
-  });
-}
-
 // ─── Session Manager ────────────────────────────────────────────
 
 export type SessionManager = {
@@ -349,6 +228,7 @@ export type SessionManager = {
   setFavorite(id: string, favorite: boolean): void;
   updatePolicy(id: string, policy: ToolPolicyConfig): void;
   getPolicy(id: string): ToolPolicyConfig;
+  getIndexableData(): { sessionId: string; transcriptPath: string | null }[];
   dispose(): Promise<void>;
 };
 
@@ -389,7 +269,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCost: 0,
-      autoNamed: true,  // don't scan until resumed
+      autoNamed: true,  // don't auto-name until resumed
       userNamed: !!m.name,  // true if user explicitly renamed via metadata
       turnCount: 0,
     };
@@ -410,6 +290,16 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         : [];
     }
     return managed.entries;
+  }
+
+  /** Hook called from wireSession on each top-level assistant text turn. */
+  function onAssistantTurn(managed: ManagedSession): void {
+    if (managed.autoNamed) return;
+    managed.turnCount++;
+    if (managed.turnCount >= AUTO_NAME_TURN_THRESHOLD) {
+      managed.autoNamed = true;
+      requestAutoName(managed, claudePath, sink).catch((err) => console.error("[auto-name] failed:", err));
+    }
   }
 
   return {
@@ -463,7 +353,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       sessions.set(id, managed);
 
       session.setToolPolicy(buildToolPolicy(policy, permMode));
-      wireSession(managed, session, sink, claudePath);
+      wireSession(managed, session, sink, () => onAssistantTurn(managed));
       return id;
     },
 
@@ -519,7 +409,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const managed = getManaged(id);
       managed.name = name;
       managed.userNamed = true;
-      managed.autoNamed = true; // stop scanning
+      managed.autoNamed = true; // stop auto-naming
       managed.lastActiveAt = Date.now();
       if (managed.claudeSessionId) {
         updateSessionMeta(managed.claudeSessionId, { name });
@@ -556,7 +446,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       ensureEntries(managed).push({ kind: "system", text: "Session resumed.", ts: Date.now() });
       managed.lastActiveAt = Date.now();
 
-      wireSession(managed, session, sink, claudePath);
+      wireSession(managed, session, sink, () => onAssistantTurn(managed));
 
       // Emit stateChange so renderer picks up the alive state
       sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });
@@ -626,6 +516,13 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
     getPolicy(id: string): ToolPolicyConfig {
       return getManaged(id).policy;
+    },
+
+    getIndexableData(): { sessionId: string; transcriptPath: string | null }[] {
+      return [...sessions.values()].map((s) => ({
+        sessionId: s.id,
+        transcriptPath: s.transcriptPath,
+      }));
     },
 
     async dispose(): Promise<void> {

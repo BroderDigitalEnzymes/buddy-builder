@@ -17,6 +17,13 @@ export function getSender(kind: ChatEntry["kind"]): Sender {
   }
 }
 
+/** Format a token count as a human-readable string (e.g. 1.2k, 3.4M). */
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
 /** Extract the filename from a path (normalizes backslashes). */
 export function basename(p: string): string {
   return p.replace(/\\/g, "/").split("/").pop() ?? p;

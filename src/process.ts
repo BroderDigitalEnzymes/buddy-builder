@@ -27,8 +27,6 @@ export function buildArgs(
   ];
 
   if (config.model) args.push("--model", config.model);
-  if (config.systemPrompt) args.push("--system-prompt", config.systemPrompt);
-  if (config.appendSystemPrompt) args.push("--append-system-prompt", config.appendSystemPrompt);
 
   // Always bypass Claude's built-in permission prompts — they're designed
   // for interactive terminals and hang when stdio is piped.
