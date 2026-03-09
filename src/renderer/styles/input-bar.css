@@ -1,0 +1,191 @@
+/* ═══ Input bar ═════════════════════════════════════════════════ */
+
+#input-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 24px 16px;
+  background: var(--bg-0);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  position: relative;
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ─── Slash command autocomplete ─── */
+
+.input-row-wrap {
+  position: relative;
+}
+
+.input-row {
+  display: flex;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.slash-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+  padding: 4px;
+  animation: dropdown-in 0.12s ease-out;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.slash-autocomplete-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.1s;
+  text-align: left;
+}
+
+.slash-autocomplete-item:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.slash-autocomplete-item.active {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.slash-autocomplete-cmd {
+  font-weight: 500;
+}
+
+#input {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  resize: none;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  line-height: 1.46667;
+}
+
+#input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+#input:disabled { opacity: 0.4; }
+#input::placeholder { color: var(--text-muted); }
+
+#send {
+  padding: 10px 20px;
+  border-radius: var(--radius-lg);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+#send:hover { background: var(--accent-dim); }
+#send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Stop button (shown beside Send while session is busy) */
+#stop-btn {
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  border: none;
+  background: var(--error);
+  color: #fff;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#stop-btn:hover { background: #c4184e; }
+
+.escape-hint,
+.queue-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2px 0;
+  animation: hintFadeIn 0.1s ease-out;
+}
+.escape-hint { color: var(--warning, #e8a838); }
+@keyframes hintFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ═══ Image preview bar (input area thumbnails) ═══════════════ */
+
+.image-preview-bar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 0 0;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.image-preview-bar::-webkit-scrollbar { height: 4px; }
+
+.image-preview-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.image-preview-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-preview-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.image-preview-thumb:hover .image-preview-remove {
+  opacity: 1;
+}

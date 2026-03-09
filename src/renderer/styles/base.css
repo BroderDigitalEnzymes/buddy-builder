@@ -1,0 +1,191 @@
+/* ═══ Reset + CSS Variables + Global Styles ═══════════════════ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* ── Backgrounds ── */
+  --bg-0: #1a1d21;
+  --bg-1: #1a1d21;
+  --bg-2: #222529;
+  --bg-3: #2c2f33;
+  --bg-4: #36393f;
+  --bg-sidebar: #19171d;
+
+  /* ── Borders ── */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  /* ── Text ── */
+  --text: #d1d2d3;
+  --text-secondary: #ababad;
+  --text-muted: #72767d;
+
+  /* ── Accent ── */
+  --accent: #1d9bd1;
+  --accent-dim: #1a7fae;
+  --accent-bg: rgba(29, 155, 209, 0.1);
+
+  /* ── Status ── */
+  --success: #2bac76;
+  --error: #e01e5a;
+  --warning: #ecb22e;
+
+  /* ── Message-specific ── */
+  --user-bg: rgba(29, 155, 209, 0.06);
+  --hover-bg: rgba(255, 255, 255, 0.04);
+  --active-bg: rgba(255, 255, 255, 0.06);
+
+  /* ── Tool entries ── */
+  --tool-bg: #222529;
+  --tool-border: rgba(255, 255, 255, 0.08);
+  --tool-done-border: rgba(43, 172, 118, 0.3);
+  --tool-blocked-bg: rgba(224, 30, 90, 0.06);
+  --tool-blocked-border: rgba(224, 30, 90, 0.2);
+
+  /* ── Avatar colors ── */
+  --avatar-user: #1d9bd1;
+  --avatar-claude: #e01e5a;
+  --avatar-system: #72767d;
+
+  /* ── Fonts ── */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", "Fira Code", "SF Mono", Consolas, monospace;
+
+  /* ── Radii ── */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+
+  /* ── Layout ── */
+  --title-bar-height: 32px;
+  --sidebar-width: 240px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-0);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.46667;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ═══ Global scrollbar ═════════════════════════════════════════ */
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+
+/* ═══ Title bar (drag region) ═════════════════════════════════ */
+
+#title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--title-bar-height);
+  padding: 0 0 0 12px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+#title-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#title-bar-icon {
+  width: 18px;
+  height: 18px;
+  -webkit-app-region: no-drag;
+}
+
+#title-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* ═══ App layout (sidebar + main) ═════════════════════════════ */
+
+#app-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ═══ Main area ══════════════════════════════════════════════ */
+
+#main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ═══ Window controls (frameless) ═════════════════════════════ */
+
+.win-controls {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: var(--title-bar-height);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.win-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.win-close:hover {
+  background: var(--error);
+  color: #fff;
+}
+
+/* ═══ Shared animations ═══════════════════════════════════════ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

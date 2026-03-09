@@ -23,6 +23,8 @@ function copyIfChanged(src, dst) {
 function copyStatic() {
   copyIfChanged("src/renderer/index.html", "dist/renderer/index.html");
   copyIfChanged("src/renderer/styles.css", "dist/renderer/styles.css");
+  mkdirSync("dist/renderer/styles", { recursive: true });
+  cpSync("src/renderer/styles", "dist/renderer/styles", { recursive: true });
   mkdirSync("dist/assets", { recursive: true });
   cpSync("assets", "dist/assets", { recursive: true });
 }
@@ -78,6 +80,16 @@ async function main() {
         }, 100);
       });
     }
+
+    // Watch styles directory for split CSS files
+    fsWatch("src/renderer/styles", { recursive: true }, (_eventType, filename) => {
+      if (!filename || copyTimer) return;
+      copyTimer = setTimeout(() => {
+        copyTimer = null;
+        cpSync("src/renderer/styles", "dist/renderer/styles", { recursive: true });
+        console.log(`Copied styles/${filename}`);
+      }, 100);
+    });
 
     console.log("Watching for changes...");
   } else {

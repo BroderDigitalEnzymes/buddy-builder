@@ -1,0 +1,107 @@
+/* ═══ Status bar ══════════════════════════════════════════════ */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  min-height: 22px;
+  background: var(--bg-1);
+  border-top: 1px solid var(--border);
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  position: relative;
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+
+.status-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: background 0.12s;
+}
+
+.status-bar-item:hover {
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+}
+
+.status-bar-item.indexing {
+  color: var(--accent);
+}
+
+.status-bar-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ─── Status bar popup ─── */
+
+.status-bar-popup {
+  position: absolute;
+  bottom: 24px;
+  left: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  font-size: 11px;
+}
+
+.status-bar-popup-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  color: var(--text-secondary);
+}
+
+.status-bar-popup-label {
+  color: var(--text-muted);
+}
+
+.status-bar-popup-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.status-bar-popup-btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.status-bar-popup-btn:hover {
+  background: var(--bg-4);
+  color: var(--text);
+}
