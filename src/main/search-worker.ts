@@ -3,6 +3,7 @@ import type { SearchIndex, IndexStatus } from "./search-index.js";
 export type IndexingSession = {
   sessionId: string;
   transcriptPath: string | null;
+  sessionName?: string;
 };
 
 export type BackgroundIndexHandle = {
@@ -22,6 +23,7 @@ export function startBackgroundIndex(
   let cancelled = false;
   let i = 0;
 
+  index.setTotalSessions(sessions.filter((s) => s.transcriptPath).length);
   index.setIndexing(true);
 
   function processChunk(): void {
@@ -35,7 +37,7 @@ export function startBackgroundIndex(
       const s = sessions[i];
       if (s.transcriptPath) {
         try {
-          index.indexSession(s.sessionId, s.transcriptPath);
+          index.indexSession(s.sessionId, s.transcriptPath, s.sessionName);
         } catch (err) {
           console.error(`[search-worker] Failed to index ${s.sessionId}:`, err);
         }

@@ -22,10 +22,11 @@ export type IndexStatus = {
 
 export type SearchIndex = {
   search(query: string, limit?: number): RawSearchResult[];
-  indexSession(sessionId: string, transcriptPath: string): boolean;
+  indexSession(sessionId: string, transcriptPath: string, sessionName?: string): boolean;
   removeSession(sessionId: string): void;
-  reindexAll(sessions: { sessionId: string; transcriptPath: string | null }[]): void;
+  reindexAll(sessions: { sessionId: string; transcriptPath: string | null; sessionName?: string }[]): void;
   getStatus(): IndexStatus;
+  setTotalSessions(n: number): void;
   setIndexing(v: boolean): void;
   close(): void;
 };
@@ -52,7 +53,8 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
       transcript_path TEXT NOT NULL,
       file_size       INTEGER NOT NULL,
       file_mtime      REAL NOT NULL,
-      indexed_at      INTEGER NOT NULL
+      indexed_at      INTEGER NOT NULL,
+      session_name    TEXT NOT NULL DEFAULT ''
     );
 
     CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
@@ -75,14 +77,21 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
     // Index already exists
   }
 
+  // Migration: add session_name column if missing
+  try {
+    db.exec(`ALTER TABLE session_index ADD COLUMN session_name TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    // Column already exists
+  }
+
   // Prepared statements
   const stmtGetIndex = db.prepare(
-    `SELECT file_size, file_mtime FROM session_index WHERE session_id = ?`
+    `SELECT file_size, file_mtime, session_name FROM session_index WHERE session_id = ?`
   );
 
   const stmtUpsertIndex = db.prepare(
-    `INSERT OR REPLACE INTO session_index (session_id, transcript_path, file_size, file_mtime, indexed_at)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO session_index (session_id, transcript_path, file_size, file_mtime, indexed_at, session_name)
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
 
   const stmtDeleteIndex = db.prepare(
@@ -180,8 +189,8 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
       }
     },
 
-    indexSession(sessionId: string, transcriptPath: string): boolean {
-      // Change detection via file size + mtime
+    indexSession(sessionId: string, transcriptPath: string, sessionName?: string): boolean {
+      // Change detection via file size + mtime + name
       let stat;
       try {
         stat = statSync(transcriptPath);
@@ -189,14 +198,16 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
         return false; // file gone
       }
 
+      const nameStr = sessionName ?? "";
       const existing = stmtGetIndex.get(sessionId) as
-        | { file_size: number; file_mtime: number }
+        | { file_size: number; file_mtime: number; session_name: string }
         | undefined;
 
       if (
         existing &&
         existing.file_size === stat.size &&
-        existing.file_mtime === stat.mtimeMs
+        existing.file_mtime === stat.mtimeMs &&
+        existing.session_name === nameStr
       ) {
         return false; // unchanged
       }
@@ -205,6 +216,11 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
       const chunks = extractSearchableText(transcriptPath);
       const insertAll = db.transaction(() => {
         deleteSessionRows(sessionId);
+        // Index session title if it's a real name (not the default)
+        if (sessionName && sessionName !== "New Session") {
+          const info = stmtInsertFts.run(sessionId, sessionName, "title");
+          stmtInsertMap.run(info.lastInsertRowid, sessionId);
+        }
         for (const chunk of chunks) {
           const info = stmtInsertFts.run(sessionId, chunk.text, chunk.contentType);
           stmtInsertMap.run(info.lastInsertRowid, sessionId);
@@ -214,7 +230,8 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
           transcriptPath,
           stat.size,
           stat.mtimeMs,
-          Date.now()
+          Date.now(),
+          nameStr
         );
       });
       insertAll();
@@ -229,7 +246,7 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
       totalSessions = sessions.length;
       for (const s of sessions) {
         if (s.transcriptPath) {
-          this.indexSession(s.sessionId, s.transcriptPath);
+          this.indexSession(s.sessionId, s.transcriptPath, s.sessionName);
         }
       }
     },
@@ -241,6 +258,10 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
         indexedSessions: row.cnt,
         isIndexing,
       };
+    },
+
+    setTotalSessions(n: number): void {
+      totalSessions = n;
     },
 
     setIndexing(v: boolean): void {

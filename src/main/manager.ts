@@ -228,7 +228,7 @@ export type SessionManager = {
   setFavorite(id: string, favorite: boolean): void;
   updatePolicy(id: string, policy: ToolPolicyConfig): void;
   getPolicy(id: string): ToolPolicyConfig;
-  getIndexableData(): { sessionId: string; transcriptPath: string | null }[];
+  getIndexableData(): { sessionId: string; transcriptPath: string | null; sessionName?: string }[];
   dispose(): Promise<void>;
 };
 
@@ -247,7 +247,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
     const id = stub.claudeSessionId;
     const managed: ManagedSession = {
       id,
-      name: m.name ?? stub.slug ?? (stub.firstPrompt.slice(0, 50) || `Session ${counter}`),
+      name: m.name ?? stub.slug ?? "New Session",
       projectName: stub.projectName,
       session: null,
       claudeSessionId: stub.claudeSessionId,
@@ -324,7 +324,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       const policy: ToolPolicyConfig = { preset: initialPreset, blockedTools: [] };
       const managed: ManagedSession = {
         id,
-        name: options?.name ?? `Session ${counter}`,
+        name: options?.name ?? "New Session",
         projectName: cwd ?? "(new)",
         session,
         claudeSessionId: null,
@@ -518,10 +518,11 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       return getManaged(id).policy;
     },
 
-    getIndexableData(): { sessionId: string; transcriptPath: string | null }[] {
+    getIndexableData(): { sessionId: string; transcriptPath: string | null; sessionName?: string }[] {
       return [...sessions.values()].map((s) => ({
         sessionId: s.id,
         transcriptPath: s.transcriptPath,
+        sessionName: s.name,
       }));
     },
 

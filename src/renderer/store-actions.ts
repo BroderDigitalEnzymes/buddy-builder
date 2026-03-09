@@ -418,6 +418,12 @@ api().onIndexProgress((status: IndexStatusInfo) => {
   emit();
 });
 
+// Fetch initial index status (in case indexing finished before renderer loaded)
+api().getIndexStatus().then((status) => {
+  state.indexStatus = status;
+  emit();
+});
+
 // Wire up notification click → focus session
 api().onFocusSession((sessionId: string) => {
   openInApp(sessionId);
