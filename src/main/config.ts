@@ -7,6 +7,7 @@ const DEFAULTS: AppConfig = {
   claudePath: "claude",
   defaultPermissionMode: "default",
   defaultProjectsFolder: "",
+  minimizeToTray: true,
 };
 
 function configPath(): string {

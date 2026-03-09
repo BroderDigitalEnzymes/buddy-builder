@@ -12,6 +12,12 @@ import { api } from "./utils.js";
 import { applySessionEvent } from "./event-handler.js";
 import { state, emit, IS_POPOUT, POPOUT_SESSION_ID, type SessionData } from "./store.js";
 
+// ─── Active session reporting ─────────────────────────────────────
+
+function reportActiveId(): void {
+  api().reportActiveSession(state.activeId);
+}
+
 // ─── Actions ─────────────────────────────────────────────────────
 
 export function navigateHome(): void {
@@ -19,31 +25,29 @@ export function navigateHome(): void {
   emit();
 }
 
-export async function openInApp(id: string): Promise<void> {
-  state.activeId = id;
-  state.currentView = "chat";
-  // Lazy-load entries
+/** Lazy-load conversation entries for a session if not yet fetched. */
+async function ensureEntries(id: string): Promise<void> {
   const data = state.sessions.get(id);
   if (data && data.entries.length === 0) {
     try {
-      const entries = await api().getSessionEntries({ sessionId: id });
-      data.entries = entries;
+      data.entries = await api().getSessionEntries({ sessionId: id });
     } catch { /* empty */ }
   }
+}
+
+export async function openInApp(id: string): Promise<void> {
+  state.activeId = id;
+  state.currentView = "chat";
+  reportActiveId();
+  await ensureEntries(id);
   emit();
 }
 
 export async function switchSession(id: string): Promise<void> {
   if (IS_POPOUT && id !== POPOUT_SESSION_ID) return; // locked to one session
   state.activeId = id;
-  // Lazy-load entries if not yet loaded (dead history OR live popout inheriting conversation)
-  const data = state.sessions.get(id);
-  if (data && data.entries.length === 0) {
-    try {
-      const entries = await api().getSessionEntries({ sessionId: id });
-      data.entries = entries;
-    } catch { /* empty */ }
-  }
+  reportActiveId();
+  await ensureEntries(id);
   emit();
 }
 
@@ -148,6 +152,7 @@ export async function createSession(
       messageQueue: [],
     });
     state.activeId = id;
+    reportActiveId();
     if (opts.openInApp !== false) {
       state.currentView = "chat";
     }
@@ -266,6 +271,7 @@ export async function deleteSession(id: string): Promise<void> {
   if (state.activeId === id) {
     const ids = [...state.sessions.keys()];
     state.activeId = ids.length > 0 ? ids[ids.length - 1] : null;
+    reportActiveId();
   }
   emit();
 }
@@ -294,9 +300,10 @@ export function toggleFavorite(id: string): void {
 export async function resumeSession(id: string): Promise<void> {
   const data = state.sessions.get(id);
   if (!data) return;
+  await ensureEntries(id);
+  emit();
   try {
     await api().resumeSession({ sessionId: id });
-    // State will be updated via stateChange event
   } catch (err) {
     data.entries.push({ kind: "system", text: `Resume failed: ${err}`, ts: Date.now() });
     emit();
@@ -340,6 +347,11 @@ function handleEvent(event: SessionEvent): void {
 
 export async function popOutSession(id: string): Promise<void> {
   await api().popOutSession({ sessionId: id });
+  // Navigate main window back to home after popping out
+  if (!IS_POPOUT) {
+    state.currentView = "home";
+    emit();
+  }
 }
 
 export async function popInSession(id: string): Promise<void> {
@@ -404,4 +416,9 @@ api().onSessionEvent(handleEvent);
 api().onIndexProgress((status: IndexStatusInfo) => {
   state.indexStatus = status;
   emit();
+});
+
+// Wire up notification click → focus session
+api().onFocusSession((sessionId: string) => {
+  openInApp(sessionId);
 });

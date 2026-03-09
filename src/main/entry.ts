@@ -1,13 +1,28 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { registerHandlers, type Handlers } from "../ipc.js";
 import { openInTerminal } from "./terminal-launcher.js";
 import { createSessionManager, type SessionManager } from "./manager.js";
 import { loadConfig, saveConfig } from "./config.js";
-import { register, unregister, dispatch, findPopout, closeAllPopouts, broadcast } from "./windows.js";
+import { register, unregister, dispatch, findPopout, broadcast } from "./windows.js";
 import { createSearchIndex, type SearchIndex } from "./search-index.js";
 import { startBackgroundIndex, type BackgroundIndexHandle } from "./search-worker.js";
+import { createTray, destroyTray } from "./tray.js";
+
+// ─── App identity (must be set before 'ready') ──────────────────
+
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.buddy-builder.app");
+}
+app.setName("Buddy Builder");
+
+// ─── Single instance lock ────────────────────────────────────────
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -40,6 +55,8 @@ let mainWindow: BrowserWindow | null = null;
 let manager: SessionManager | null = null;
 let searchIndex: SearchIndex | null = null;
 let bgIndexHandle: BackgroundIndexHandle | null = null;
+let mainActiveSessionId: string | null = null;
+let isQuitting = false;
 
 // ─── Shared window factory ──────────────────────────────────────
 
@@ -80,10 +97,19 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   register({ kind: "main", win: mainWindow });
 
+  // When "minimize to tray" is on, HIDE the window instead of destroying it.
+  // This keeps the BrowserWindow alive (no window-all-closed, no GC issues)
+  // and makes re-showing instant.
+  mainWindow.on("close", (e) => {
+    if (!isQuitting && loadConfig().minimizeToTray) {
+      e.preventDefault();
+      mainWindow!.hide();
+    }
+  });
+
   mainWindow.on("closed", () => {
     unregister(mainWindow!);
     mainWindow = null;
-    closeAllPopouts();
   });
 
   if (TEST_MODE) runTestMode();
@@ -288,12 +314,52 @@ function setupIpc(mgr: SessionManager): void {
 // ─── App lifecycle ──────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
+  });
+
   const config = loadConfig();
 
   // Wrap dispatch to also schedule re-indexing on result/exit events
   const reindexTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const wrappedDispatch = (event: import("../ipc.js").SessionEvent) => {
     dispatch(event);
+
+    // Desktop notification when a session becomes idle and its window isn't focused
+    if (event.kind === "stateChange" && event.to === "idle") {
+      const popout = findPopout(event.sessionId);
+      const popoutFocused = popout ? popout.isFocused() : false;
+      const mainFocused = mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused() && mainActiveSessionId === event.sessionId;
+      if (!popoutFocused && !mainFocused) {
+        const sessionName = manager?.list().find((s) => s.id === event.sessionId)?.name ?? "Session";
+        const notif = new Notification({
+          title: "Buddy Builder",
+          body: `${sessionName} is waiting for input`,
+        });
+        notif.on("click", () => {
+          const pw = findPopout(event.sessionId);
+          if (pw && !pw.isDestroyed()) {
+            pw.show();
+            pw.focus();
+          } else if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.webContents.send("focusSession", event.sessionId);
+          } else {
+            createWindow();
+            mainWindow!.webContents.once("did-finish-load", () => {
+              mainWindow!.webContents.send("focusSession", event.sessionId);
+            });
+          }
+        });
+        notif.show();
+      }
+    }
 
     if (
       searchIndex &&
@@ -340,15 +406,43 @@ app.whenReady().then(() => {
 
   createWindow();
 
+  createTray({
+    onShowWindow: () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      } else {
+        createWindow();
+      }
+    },
+    onQuit: () => app.quit(),
+  });
+
+  ipcMain.on("reportActiveSession", (_event, id: string | null) => {
+    mainActiveSessionId = id;
+  });
+
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    } else if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
   });
 });
 
 app.on("window-all-closed", () => {
+  // When minimizeToTray is on, the main window hides instead of closing,
+  // so this only fires for popout windows or when the setting is off.
+  if (!loadConfig().minimizeToTray) {
+    app.quit();
+  }
+});
+
+app.on("before-quit", () => {
+  isQuitting = true;
   bgIndexHandle?.cancel();
   searchIndex?.close();
-  // Kill all sessions without waiting — dispose() waits up to 2s per session
   manager?.dispose();
-  app.quit();
+  destroyTray();
 });

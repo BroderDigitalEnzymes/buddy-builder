@@ -201,25 +201,49 @@ body {
   padding: 0 4px;
 }
 
-.home-new-btn {
+.home-new-split {
   flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.home-new-btn {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 9px 16px;
   border: none;
-  border-radius: var(--radius-lg);
   background: var(--accent);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   transition: filter 0.15s, transform 0.1s;
 }
 
 .home-new-btn:hover { filter: brightness(1.1); }
 .home-new-btn:active { transform: scale(0.97); }
+
+.home-new-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  transition: filter 0.15s;
+}
+
+.home-new-arrow:hover { filter: brightness(1.2); }
+.home-new-arrow:active { filter: brightness(0.95); }
 
 .home-settings-btn {
   flex-shrink: 0;
@@ -469,6 +493,23 @@ body {
 .hcard-btn-danger:hover {
   background: color-mix(in srgb, var(--error) 12%, transparent);
   border-color: var(--error);
+}
+
+.hcard-btn-confirm-delete {
+  color: #fff;
+  background: var(--error);
+  border-color: var(--error);
+  margin-left: auto;
+  animation: confirm-pulse 0.3s ease;
+}
+.hcard-btn-confirm-delete:hover {
+  filter: brightness(1.15);
+}
+
+@keyframes confirm-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
 }
 
 /* ─── Session action buttons (shared) ─── */
@@ -3721,6 +3762,51 @@ body {
   margin-top: 12px;
   font-size: 13px;
   color: var(--success);
+}
+
+.setting-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setting-toggle-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  background: var(--border-strong);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.setting-toggle-switch.active {
+  background: var(--accent);
+}
+
+.setting-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.setting-toggle-switch.active .setting-toggle-knob {
+  transform: translateX(18px);
 }
 
 .modal-footer {

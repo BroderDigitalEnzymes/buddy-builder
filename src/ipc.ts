@@ -164,6 +164,7 @@ export type AppConfig = {
   claudePath: string;
   defaultPermissionMode: PermissionMode;
   defaultProjectsFolder: string;
+  minimizeToTray: boolean;
 };
 
 /** Invoke channels: renderer calls, main handles. */
@@ -205,6 +206,7 @@ export type InvokeContract = {
 export type EventContract = {
   sessionEvent: SessionEvent;
   indexProgress: IndexStatusInfo;
+  focusSession: string;
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -240,7 +242,9 @@ export type EventPushers<T> = {
 };
 
 /** The full API the renderer sees on window.claude */
-export type ClientApi = InvokeClient<InvokeContract> & EventListeners<EventContract>;
+export type ClientApi = InvokeClient<InvokeContract> & EventListeners<EventContract> & {
+  reportActiveSession: (sessionId: string | null) => void;
+};
 
 /** The handler map main must provide */
 export type Handlers = InvokeHandlers<InvokeContract>;
@@ -265,7 +269,7 @@ export const INVOKE_CHANNELS = [
 ] as const satisfies readonly (keyof InvokeContract)[];
 
 /** Event channel names (must match EventContract keys). */
-export const EVENT_CHANNELS = ["sessionEvent", "indexProgress"] as const satisfies readonly (keyof EventContract)[];
+export const EVENT_CHANNELS = ["sessionEvent", "indexProgress", "focusSession"] as const satisfies readonly (keyof EventContract)[];
 
 // ═══════════════════════════════════════════════════════════════════
 // BRIDGE FACTORIES — plain objects for contextBridge compatibility

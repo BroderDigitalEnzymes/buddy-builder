@@ -32,7 +32,9 @@ function SessionCard({ session, poppedOut }: {
 
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleClick = useCallback(() => {
     if (poppedOut) { focusPopout(session.id); return; }
@@ -128,8 +130,25 @@ function SessionCard({ session, poppedOut }: {
             )}
           </>
         )}
-        <button className="hcard-btn hcard-btn-danger" onClick={() => deleteSession(session.id)}>
-          Delete
+        <button
+          className={`hcard-btn ${confirmDelete ? "hcard-btn-confirm-delete" : "hcard-btn-danger"}`}
+          onClick={() => {
+            if (confirmDelete) {
+              if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+              deleteSession(session.id);
+            } else {
+              setConfirmDelete(true);
+              deleteTimerRef.current = setTimeout(() => setConfirmDelete(false), 3000);
+            }
+          }}
+          onMouseLeave={() => {
+            if (confirmDelete) {
+              if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+              deleteTimerRef.current = setTimeout(() => setConfirmDelete(false), 1500);
+            }
+          }}
+        >
+          {confirmDelete ? "Confirm?" : "Delete"}
         </button>
       </div>
     </div>
@@ -242,6 +261,16 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
   const dirTree = useMemo(() => buildDirTree(filtered), [filtered]);
 
   const handleNew = useCallback(async () => {
+    const { api } = await import("./utils.js");
+    const cfg = await api().getConfig();
+    const cwd = cfg.defaultProjectsFolder || await pickFolder();
+    if (cwd) {
+      await createSession("default" as PermissionMode, cwd);
+    }
+  }, []);
+
+  const handleNewPickFolder = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
     const cwd = await pickFolder();
     if (cwd) {
       await createSession("default" as PermissionMode, cwd);
@@ -313,12 +342,19 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
             >
               {viewMode === "list" ? treeIcon : listIcon}
             </button>
-            <button className="home-new-btn" onClick={handleNew}>
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M8 2v12M2 8h12" />
-              </svg>
-              New Session
-            </button>
+            <div className="home-new-split">
+              <button className="home-new-btn" onClick={handleNew}>
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M8 2v12M2 8h12" />
+                </svg>
+                New Session
+              </button>
+              <button className="home-new-arrow" onClick={handleNewPickFolder} title="Choose folder...">
+                <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 6l4 4 4-4" />
+                </svg>
+              </button>
+            </div>
             <button className="home-settings-btn" onClick={() => setShowSettings(true)} title="Settings">
               <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <circle cx="8" cy="8" r="2" />
