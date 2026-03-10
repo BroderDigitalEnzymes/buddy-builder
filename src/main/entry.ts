@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Notification, nativeImage } from "electron";
 import * as path from "path";
 import * as fs from "fs";
+import { execSync } from "child_process";
 import { registerHandlers, type Handlers } from "../ipc.js";
 import { openInTerminal } from "./terminal-launcher.js";
 import { createSessionManager, type SessionManager } from "./manager.js";
@@ -391,7 +392,19 @@ app.whenReady().then(() => {
     }
   };
 
-  manager = createSessionManager(wrappedDispatch, config.claudePath);
+  // Resolve full path to claude binary — packaged Electron apps don't inherit shell PATH
+  let claudePath = config.claudePath;
+  if (claudePath === "claude") {
+    try {
+      const shell = process.env.SHELL || "/bin/zsh";
+      claudePath = execSync(`${shell} -ilc "which claude"`, { encoding: "utf-8" }).trim();
+      console.log("[claude] resolved path:", claudePath);
+    } catch {
+      console.warn("[claude] could not resolve full path, using 'claude'");
+    }
+  }
+
+  manager = createSessionManager(wrappedDispatch, claudePath);
   setupIpc(manager);
 
   // Initialize search index and start background indexing
