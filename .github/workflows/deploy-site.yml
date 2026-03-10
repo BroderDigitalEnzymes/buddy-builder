@@ -1,0 +1,72 @@
+name: Deploy Download Page
+
+on:
+  push:
+    branches: [master]
+    paths: [docs/**]
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate release.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch latest release using gh cli (works for private repos with GITHUB_TOKEN)
+          RELEASE_JSON=$(gh release view --json tagName,assets --repo ${{ github.repository }} 2>/dev/null || echo "")
+
+          if [ -z "$RELEASE_JSON" ]; then
+            echo '{"version":"unreleased","assets":[]}' > docs/release.json
+            exit 0
+          fi
+
+          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tagName | ltrimstr("v")')
+
+          # Build assets array with download URLs, sizes, icons
+          echo "$RELEASE_JSON" | jq --arg v "$VERSION" '{
+            version: $v,
+            assets: [
+              {
+                icon: "\ud83c\udf4e",
+                title: "macOS",
+                label: ".dmg",
+                url: ([.assets[] | select(.name | endswith(".dmg"))] | first // empty | .url) // null,
+                size: ([.assets[] | select(.name | endswith(".dmg"))] | first // empty | .size) // null
+              },
+              {
+                icon: "\ud83e\ude9f",
+                title: "Windows",
+                label: ".exe",
+                url: ([.assets[] | select((.name | endswith(".exe")) and (.name | endswith(".blockmap") | not))] | first // empty | .url) // null,
+                size: ([.assets[] | select((.name | endswith(".exe")) and (.name | endswith(".blockmap") | not))] | first // empty | .size) // null
+              },
+              {
+                icon: "\ud83d\udc27",
+                title: "Linux",
+                label: ".AppImage",
+                url: ([.assets[] | select(.name | endswith(".AppImage"))] | first // empty | .url) // null,
+                size: ([.assets[] | select(.name | endswith(".AppImage"))] | first // empty | .size) // null
+              }
+            ] | map(
+              if .size then
+                .size = (if .size > 1e9 then ((.size / 1e9 * 10 | floor) / 10 | tostring) + " GB"
+                         elif .size > 1e6 then ((.size / 1e6 * 10 | floor) / 10 | tostring) + " MB"
+                         else ((.size / 1e3 | floor) | tostring) + " KB" end)
+              else . end
+            )
+          }' > docs/release.json
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy docs --project-name=buddy-builder

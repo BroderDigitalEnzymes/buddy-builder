@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buddy Builder - Download</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 80px 20px 40px;
+      max-width: 700px;
+    }
+
+    .hero img {
+      width: 120px;
+      height: 120px;
+      border-radius: 24px;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      font-size: 42px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      font-size: 18px;
+      color: #8b949e;
+      line-height: 1.6;
+    }
+
+    .version {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 4px 12px;
+      background: #1c2128;
+      border: 1px solid #30363d;
+      border-radius: 20px;
+      font-size: 13px;
+      color: #8b949e;
+    }
+
+    .downloads {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+      max-width: 900px;
+      width: 100%;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 32px 28px;
+      width: 260px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+
+    .card:hover {
+      border-color: #58a6ff;
+    }
+
+    .card .icon {
+      font-size: 40px;
+      margin-bottom: 16px;
+    }
+
+    .card h3 {
+      font-size: 18px;
+      margin-bottom: 6px;
+    }
+
+    .card .file-info {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 20px;
+    }
+
+    .card a {
+      display: inline-block;
+      padding: 10px 28px;
+      background: #238636;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .card a:hover {
+      background: #2ea043;
+    }
+
+    .card a.disabled {
+      background: #21262d;
+      color: #484f58;
+      pointer-events: none;
+    }
+
+    .footer {
+      margin-top: 60px;
+      padding: 20px;
+      text-align: center;
+      color: #484f58;
+      font-size: 13px;
+    }
+
+    .footer a {
+      color: #58a6ff;
+      text-decoration: none;
+    }
+
+    .loading {
+      color: #8b949e;
+      padding: 40px;
+      font-size: 14px;
+    }
+
+    .prereq {
+      max-width: 600px;
+      margin: 20px auto 0;
+      padding: 16px 20px;
+      background: #1c2128;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #8b949e;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .prereq strong {
+      color: #e6edf3;
+    }
+
+    .prereq a {
+      color: #58a6ff;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <img src="icon-256.png" alt="Buddy Builder">
+    <h1>Buddy Builder</h1>
+    <p>A desktop GUI for Claude Code. Manage multiple sessions, search conversations, and work with AI — visually.</p>
+    <div class="version" id="version">Loading...</div>
+  </div>
+
+  <div class="prereq">
+    <strong>Prerequisite:</strong> Buddy Builder requires <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank">Claude Code CLI</a> to be installed.<br>
+    Install it with: <code>npm install -g @anthropic-ai/claude-code</code>
+  </div>
+
+  <div class="downloads" id="downloads">
+    <div class="loading">Fetching latest release...</div>
+  </div>
+
+  <div class="footer">
+    <a href="https://github.com/eran-broder/buddy-builder" target="_blank">GitHub</a>
+  </div>
+
+  <script>
+    async function loadRelease() {
+      try {
+        const res = await fetch("./release.json");
+        if (!res.ok) throw new Error("No release data");
+        const data = await res.json();
+
+        document.getElementById("version").textContent = `v${data.version}`;
+
+        const container = document.getElementById("downloads");
+        container.innerHTML = data.assets.map(c => `
+          <div class="card">
+            <div class="icon">${c.icon}</div>
+            <h3>${c.title}</h3>
+            <div class="file-info">${c.url ? c.size + " &middot; " + c.label : "Not available"}</div>
+            <a href="${c.url || "#"}" class="${c.url ? "" : "disabled"}">
+              Download
+            </a>
+          </div>
+        `).join("");
+      } catch (err) {
+        document.getElementById("downloads").innerHTML =
+          `<div class="loading">No release available yet.</div>`;
+      }
+    }
+
+    loadRelease();
+  </script>
+</body>
+</html>
