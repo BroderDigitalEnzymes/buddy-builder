@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Notification, nativeImage } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { registerHandlers, type Handlers } from "../ipc.js";
@@ -406,6 +406,12 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+
+  // Set dock icon on macOS
+  if (process.platform === "darwin" && app.dock) {
+    const iconPath = path.join(__dirname, "assets", "icon-256.png");
+    app.dock.setIcon(nativeImage.createFromPath(iconPath));
+  }
 
   // Auto-update: check for new versions on launch
   autoUpdater.logger = console;
