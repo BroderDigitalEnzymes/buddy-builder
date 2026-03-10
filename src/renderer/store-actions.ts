@@ -235,6 +235,25 @@ export async function approvePermission(toolUseId: string, allow: boolean): Prom
   }
 }
 
+export function approveAllPermissions(): void {
+  if (!state.activeId) return;
+  const data = state.sessions.get(state.activeId);
+  if (!data) return;
+
+  const pending: string[] = [];
+  function walk(entries: ChatEntry[]) {
+    for (const e of entries) {
+      if (e.kind === "tool" && e.status === "permission") pending.push(e.toolUseId);
+      if (e.kind === "tool" && e.children) walk(e.children);
+    }
+  }
+  walk(data.entries);
+
+  for (const toolUseId of pending) {
+    approvePermission(toolUseId, true);
+  }
+}
+
 export async function setPreset(preset: PolicyPreset): Promise<void> {
   if (!state.activeId) return;
   const data = state.sessions.get(state.activeId);
