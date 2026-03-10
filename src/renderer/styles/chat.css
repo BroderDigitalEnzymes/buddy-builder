@@ -330,7 +330,6 @@
 }
 
 .msg-row-system {
-  justify-content: center;
   padding: 8px 24px;
 }
 
@@ -365,9 +364,10 @@
 .msg-avatar-claude svg { fill: #fff; }
 
 .msg-avatar-system {
-  background: var(--bg-3);
-  color: var(--text-muted);
+  background: linear-gradient(135deg, #6e7a8a, #525d6b);
+  color: #fff;
 }
+.msg-avatar-system svg { fill: #fff; }
 
 .msg-avatar-spacer {
   width: 30px;
@@ -445,6 +445,17 @@
   color: var(--text);
   line-height: 1.4;
   letter-spacing: -0.01em;
+}
+
+.msg-sender-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #8a929c;
+  background: rgba(138, 146, 156, 0.15);
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .msg-timestamp {
@@ -649,15 +660,27 @@
 
 /* ─── System messages ─── */
 
-.msg-system-text {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-  padding: 3px 14px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  display: inline-block;
+.msg-system-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.msg-system-bar {
+  flex-shrink: 0;
+  width: 3px;
+  min-height: 18px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
+.msg-system-content {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.46667;
 }
 
 .msg-compact {

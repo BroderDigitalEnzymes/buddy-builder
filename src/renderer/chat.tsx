@@ -39,7 +39,7 @@ const md = new Marked({ breaks: true });
 const SENDER_LABELS: Record<Sender, string> = {
   user: "You",
   claude: "Claude",
-  system: "System",
+  system: "Claude",
 };
 
 const SENDER_ICONS: Record<Sender, React.ReactNode> = {
@@ -57,9 +57,10 @@ const SENDER_ICONS: Record<Sender, React.ReactNode> = {
     </svg>
   ),
   system: (
-    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M19.07 4.93l-2.83 2.83M7.76 16.24l-2.83 2.83" />
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+      <path d="M12 2l2.4 5.6L20 10l-5.6 2.4L12 18l-2.4-5.6L4 10l5.6-2.4z" />
+      <circle cx="19" cy="5" r="1.5" opacity="0.5" />
+      <circle cx="5" cy="17" r="1" opacity="0.4" />
     </svg>
   ),
 };
@@ -169,6 +170,14 @@ function EntryContent({ entry, prevKind, nextKind }: EntryContentProps) {
       );
     }
 
+    case "system":
+      return (
+        <div className="msg-system-block">
+          <div className="msg-system-bar" />
+          <span className="msg-system-content">{entry.text}</span>
+        </div>
+      );
+
     default:
       return null;
   }
@@ -186,14 +195,7 @@ type EntryRowProps = {
 export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowProps) {
   const sender = getSender(entry.kind);
 
-  // System messages: centered pill
-  if (entry.kind === "system") {
-    return (
-      <div className="msg-row msg-row-system">
-        <div className="msg-system-text">{entry.text}</div>
-      </div>
-    );
-  }
+  // System messages: rendered like normal messages (fall through below)
 
   // Compact messages: styled compaction pill
   if (entry.kind === "compact") {
@@ -227,6 +229,7 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowPr
         <div className="msg-content">
           <div className="msg-header">
             <span className="msg-sender">{SENDER_LABELS[sender]}</span>
+            {sender === "system" && <span className="msg-sender-tag">internal</span>}
             <span className="msg-timestamp">{formatTime(entry.ts)}</span>
           </div>
           <EntryContent entry={entry} prevKind={prevKind} nextKind={nextKind} />
