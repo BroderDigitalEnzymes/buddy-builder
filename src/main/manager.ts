@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import { spawn as spawnChild } from "child_process";
 import * as os from "os";
 import * as path from "path";
-import { readFileSync } from "fs";
 import { createSession, type Session, type SessionConfig } from "../index.js";
 import {
   DEFAULT_POLICY,
@@ -18,7 +17,7 @@ import {
   type PolicyPreset,
   type SessionMeta as IpcSessionMeta,
 } from "../ipc.js";
-import { discoverAllSessions, parseTranscript, claudeProjectDir } from "./transcript.js";
+import { discoverAllSessions, parseTranscript } from "./transcript.js";
 import { loadMeta, updateSessionMeta, deleteSessionMeta, type SessionMeta } from "./session-meta.js";
 import { wireSession } from "./session-wiring.js";
 
@@ -65,55 +64,25 @@ type EventSink = (event: SessionEvent) => void;
 const AUTO_NAME_TURN_THRESHOLD = 3;
 
 /** Extract a compact summary of the conversation for the naming prompt.
- *  Returns null if there aren't enough user turns (< AUTO_NAME_TURN_THRESHOLD). */
+ *  Uses in-memory entries (always up-to-date) rather than JSONL on disk. */
 function buildNamingContext(managed: ManagedSession): string | null {
-  const origSessionId = managed.claudeSessionId;
-  const origCwd = managed.cwd;
-  if (!origSessionId || !origCwd) return null;
+  const entries = managed.entries;
+  if (!entries || entries.length === 0) return null;
 
-  const origProjectDir = claudeProjectDir(origCwd);
-  const filePath = managed.transcriptPath ?? path.join(origProjectDir, `${origSessionId}.jsonl`);
-
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-
-  const lines = raw.split("\n").filter(l => l.trim());
   const exchanges: string[] = [];
   let userTurns = 0;
-  let totalExchanges = 0;
 
-  for (const line of lines) {
-    if (totalExchanges >= 10) break;
-    try {
-      const obj = JSON.parse(line);
-      if (obj.type === "user" && obj.message?.content) {
-        const text = Array.isArray(obj.message.content)
-          ? obj.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ")
-          : typeof obj.message.content === "string" ? obj.message.content : "";
-        if (text && !text.startsWith("[tool_result")) {
-          exchanges.push(`User: ${text.slice(0, 200)}`);
-          userTurns++;
-          totalExchanges++;
-        }
-      } else if (obj.type === "assistant" && obj.message?.content) {
-        const text = Array.isArray(obj.message.content)
-          ? obj.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ")
-          : "";
-        if (text) {
-          exchanges.push(`Assistant: ${text.slice(0, 200)}`);
-          totalExchanges++;
-        }
-      }
-    } catch { /* skip */ }
+  for (const entry of entries) {
+    if (exchanges.length >= 20) break;
+    if (entry.kind === "user") {
+      exchanges.push(`User: ${entry.text.slice(0, 200)}`);
+      userTurns++;
+    } else if (entry.kind === "text") {
+      exchanges.push(`Assistant: ${entry.text.slice(0, 200)}`);
+    }
   }
 
-  // Need at least AUTO_NAME_TURN_THRESHOLD user turns
   if (userTurns < AUTO_NAME_TURN_THRESHOLD) return null;
-
   return exchanges.join("\n");
 }
 
@@ -143,7 +112,7 @@ async function requestAutoName(
       const child = spawnChild(
         claudePath,
         ["-p", prompt, "--no-session-persistence", "--max-turns", "1"],
-        { stdio: ["ignore", "pipe", "pipe"], env },
+        { stdio: ["ignore", "pipe", "pipe"], env, cwd: os.tmpdir() },
       );
 
       let stdout = "";
@@ -298,7 +267,10 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
     managed.turnCount++;
     if (managed.turnCount >= AUTO_NAME_TURN_THRESHOLD) {
       managed.autoNamed = true;
-      requestAutoName(managed, claudePath, sink).catch((err) => console.error("[auto-name] failed:", err));
+      requestAutoName(managed, claudePath, sink).catch((err) => {
+        console.error("[auto-name] failed:", err);
+        managed.autoNamed = false; // allow retry on next turn
+      });
     }
   }
 
