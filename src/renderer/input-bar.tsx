@@ -122,10 +122,10 @@ export const InputBar = memo(function InputBar({ sessionId, disabled, isBusy, qu
     requestAnimationFrame(() => el.focus());
   }, [onSend, pendingImages]);
 
-  // Auto-focus on mount
+  // Auto-focus on mount and when switching sessions
   useEffect(() => {
     if (!disabled) ref.current?.focus();
-  }, [disabled]);
+  }, [disabled, sessionId]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // Slash autocomplete navigation
