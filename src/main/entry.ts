@@ -6,12 +6,13 @@ import { registerHandlers, type Handlers } from "../ipc.js";
 import { openInTerminal } from "./terminal-launcher.js";
 import { createSessionManager, type SessionManager } from "./manager.js";
 import { loadConfig, saveConfig } from "./config.js";
-import { register, unregister, dispatch, findPopout, broadcast } from "./windows.js";
+import { register, unregister, dispatch, findPopout, getMain, broadcast } from "./windows.js";
 import { createSearchIndex, type SearchIndex } from "./search-index.js";
 import { startBackgroundIndex, type BackgroundIndexHandle } from "./search-worker.js";
 import { createTray, destroyTray } from "./tray.js";
 import { autoUpdater } from "electron-updater";
 import { dlog } from "./debug-log.js";
+import { startRestApi } from "./rest-api.js";
 
 // ─── Crash catchers ─────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ let mainWindow: BrowserWindow | null = null;
 let manager: SessionManager | null = null;
 let searchIndex: SearchIndex | null = null;
 let bgIndexHandle: BackgroundIndexHandle | null = null;
+let restApiHandle: { port: number; close: () => void } | null = null;
 let mainActiveSessionId: string | null = null;
 let isQuitting = false;
 
@@ -248,8 +250,8 @@ function runTestMode(): void {
 
 // ─── IPC — one handler object, one registration call ────────────
 
-function setupIpc(mgr: SessionManager): void {
-  const handlers: Handlers = {
+function buildHandlers(mgr: SessionManager): Handlers {
+  return {
     createSession:     (opts) => mgr.create(opts),
     sendMessage:       ({ sessionId, text, images }) => { mgr.send(sessionId, text, images); },
     answerQuestion:    ({ sessionId, toolUseId, answer }) => { mgr.answerQuestion(sessionId, toolUseId, answer); },
@@ -347,7 +349,9 @@ function setupIpc(mgr: SessionManager): void {
       if (w) setImmediate(() => w.close());
     },
   };
+}
 
+function setupIpc(handlers: Handlers): void {
   registerHandlers(
     (ch, fn) => ipcMain.handle(ch, fn as any),
     handlers,
@@ -408,8 +412,10 @@ app.whenReady().then(() => {
 
   // Wrap dispatch to also schedule re-indexing on result/exit events
   const reindexTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const sseListeners: Array<(event: import("../ipc.js").SessionEvent) => void> = [];
   const wrappedDispatch = (event: import("../ipc.js").SessionEvent) => {
     dispatch(event);
+    for (const fn of sseListeners) fn(event);
 
     // Desktop notification when a session becomes idle and its window isn't focused
     if (event.kind === "stateChange" && event.to === "idle") {
@@ -490,7 +496,25 @@ app.whenReady().then(() => {
   }
 
   manager = createSessionManager(wrappedDispatch, claudePath);
-  setupIpc(manager);
+
+  const handlers = buildHandlers(manager);
+  setupIpc(handlers);
+
+  // REST API — reuses the same handlers object (DRY)
+  const screenshotFn = async (sessionId?: string) => {
+    const win = sessionId ? (findPopout(sessionId) ?? getMain()) : getMain();
+    if (!win || win.isDestroyed()) throw new Error("No window available");
+    const image = await win.webContents.capturePage();
+    const p = path.join(process.env.TEMP ?? "/tmp", `buddy-${Date.now()}.png`);
+    fs.writeFileSync(p, image.toPNG());
+    return p;
+  };
+  startRestApi(handlers, sseListeners, screenshotFn).then((h) => {
+    restApiHandle = h;
+    dlog("[rest-api] port =", h.port);
+  }).catch((err) => {
+    console.error("[rest-api] Failed to start:", err);
+  });
 
   // Initialize search index and start background indexing
   try {
@@ -550,6 +574,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   dlog("[app] BEFORE-QUIT event");
   isQuitting = true;
+  restApiHandle?.close();
   bgIndexHandle?.cancel();
   searchIndex?.close();
   manager?.dispose();
