@@ -7,6 +7,12 @@ import type {
 export { PermissionModes } from "./schema.js";
 export type { PermissionMode } from "./schema.js";
 
+export { SessionStates } from "./schema.js";
+export type { SessionState } from "./schema.js";
+
+export const ToolStatuses = ["running", "done", "blocked", "permission"] as const;
+export type ToolStatus = (typeof ToolStatuses)[number];
+
 // ─── Image data (shared between main + renderer) ─────────────────
 
 export type ImageData = {
@@ -19,7 +25,7 @@ export type ImageData = {
 export type ChatEntry =
   | { kind: "user"; text: string; images?: ImageData[]; ts: number }
   | { kind: "text"; text: string; streaming?: boolean; ts: number }
-  | { kind: "tool"; toolName: string; toolUseId: string; status: "running" | "done" | "blocked" | "permission"; detail: string; toolInput: Record<string, unknown>; toolResult?: string; children?: ChatEntry[]; ts: number }
+  | { kind: "tool"; toolName: string; toolUseId: string; status: ToolStatus; detail: string; toolInput: Record<string, unknown>; toolResult?: string; children?: ChatEntry[]; ts: number }
   | { kind: "result"; cost: number; turns: number; durationMs: number; ts: number }
   | { kind: "compact"; trigger: string; preTokens: number | null; ts: number }
   | { kind: "system"; text: string; ts: number };
@@ -42,7 +48,7 @@ export type SessionEvent =
   | { kind: "usage"; sessionId: string; inputTokens: number; outputTokens: number }
   | { kind: "stop"; sessionId: string; stopHookActive: boolean }
   | { kind: "notification"; sessionId: string; title?: string; body: string }
-  | { kind: "stateChange"; sessionId: string; from: string; to: string }
+  | { kind: "stateChange"; sessionId: string; from: SessionState; to: SessionState }
   | { kind: "systemMessage"; sessionId: string; text: string }
   | { kind: "warn"; sessionId: string; message: string }
   | { kind: "error"; sessionId: string; message: string }

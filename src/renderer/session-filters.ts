@@ -43,26 +43,28 @@ export function splitSessions(
   query: string,
   pinnedIds: Set<string>,
   limit: number,
+  poppedOutIds?: Set<string>,
 ): SplitResult {
   const q = query.trim();
+  const isPoppedOut = (s: SessionData) => poppedOutIds?.has(s.id) ?? false;
 
-  const live = sessions.filter((s) => s.state !== "dead");
+  const live = sessions.filter((s) => s.state !== "dead" && !isPoppedOut(s));
   const filteredLive = q ? live.filter((s) => sessionMatchesQuery(s, q)) : live;
 
   // Pinned: favorites that are dead
-  let pinned = sessions.filter((s) => s.favorite && s.state === "dead");
+  let pinned = sessions.filter((s) => s.favorite && s.state === "dead" && !isPoppedOut(s));
   if (q) pinned = pinned.filter((s) => sessionMatchesQuery(s, q));
   pinned.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 
   const pinnedIdSet = new Set(pinned.map((s) => s.id));
 
   // History: dead, non-pinned, capped
-  let dead = sessions.filter((s) => s.state === "dead" && !pinnedIdSet.has(s.id));
+  let dead = sessions.filter((s) => s.state === "dead" && !pinnedIdSet.has(s.id) && !isPoppedOut(s));
   if (q) dead = dead.filter((s) => sessionMatchesQuery(s, q));
   dead.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 
   // Full history for tree view (all dead, including pinned)
-  let allDead = sessions.filter((s) => s.state === "dead");
+  let allDead = sessions.filter((s) => s.state === "dead" && !isPoppedOut(s));
   if (q) allDead = allDead.filter((s) => sessionMatchesQuery(s, q));
 
   return {

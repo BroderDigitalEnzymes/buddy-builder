@@ -9,7 +9,7 @@ import { dlog } from "./debug-log.js";
 const GUI_ONLY = new Set([
   "winMinimize", "winMaximize", "winClose", "setAlwaysOnTop",
   "pickFolder", "takeScreenshot", "openInfoWindow",
-  "popOutSession", "popInSession", "focusPopout", "resumeInTerminal",
+  "focusPopout", "resumeInTerminal",
 ]);
 
 type ScreenshotFn = (sessionId?: string) => Promise<string>;

@@ -19,7 +19,7 @@ import { SettingsModal } from "./settings-modal.js";
 import { SessionActionButtons } from "./session-actions.js";
 import type { PermissionMode } from "../ipc.js";
 import { relativeTime } from "./time.js";
-import { buildDirTree, countSessions, type DirTreeNode } from "./dir-tree.js";
+import { groupByDirectory, type DirGroup } from "./dir-tree.js";
 
 // ─── Session card (rich inline card) ────────────────────────────
 
@@ -186,49 +186,32 @@ function SearchResultCard({ result, onOpen }: {
   );
 }
 
-// ─── Tree node view (recursive) ──────────────────────────────────
+// ─── Directory group view (flat grouping by cwd) ─────────────────
 
-function TreeNodeView({ node, poppedOutIds, expandedPaths, onToggle }: {
-  node: DirTreeNode;
+function DirGroupView({ group, poppedOutIds }: {
+  group: DirGroup;
   poppedOutIds: Set<string>;
-  expandedPaths: Set<string>;
-  onToggle: (path: string) => void;
 }) {
-  const isOpen = !expandedPaths.has(node.fullPath); // default open, toggle collapses
-  const childNodes = [...node.children.values()].sort((a, b) => a.segment.localeCompare(b.segment));
-  const count = countSessions(node);
-
   return (
     <div className="htree-node">
-      <button className="htree-header" onClick={() => onToggle(node.fullPath)}>
-        <span className="htree-toggle">{isOpen ? "\u25BE" : "\u25B8"}</span>
+      <div className="htree-header">
         <svg className="htree-folder-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
           <path d="M1 3h5l1.5 1.5H15v9.5H1V3z" opacity="0.7" />
         </svg>
-        <span className="htree-name">{node.segment}</span>
-        <span className="htree-count">{count}</span>
-      </button>
-      {isOpen && (
-        <div className="htree-children">
-          {childNodes.map(child => (
-            <TreeNodeView
-              key={child.fullPath}
-              node={child}
-              poppedOutIds={poppedOutIds}
-              expandedPaths={expandedPaths}
-              onToggle={onToggle}
-            />
+        <span className="htree-name" title={group.directory}>{group.directory}</span>
+      </div>
+      <div className="htree-children">
+        {group.sessions
+          .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
+          .map(s => (
+            <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
           ))}
-          {node.sessions
-            .sort((a, b) => b.lastActiveAt - a.lastActiveAt)
-            .map(s => (
-              <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
-            ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
+
+type HomeViewMode = "list" | "tree";
 
 // ─── HomeView ───────────────────────────────────────────────────
 
@@ -237,8 +220,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
   poppedOutIds: Set<string>;
 }) {
   const [showSettings, setShowSettings] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "tree">("list");
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<HomeViewMode>("list");
 
   const { searchQuery, searchResults } = getState();
 
@@ -262,7 +244,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
   const dead = filtered.filter((s) => s.state === "dead");
 
   // Tree view data
-  const dirTree = useMemo(() => buildDirTree(filtered), [filtered]);
+  const dirGroups = useMemo(() => groupByDirectory(filtered), [filtered]);
 
   const handleNew = useCallback(async () => {
     const { api } = await import("./utils.js");
@@ -283,14 +265,6 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
       const id = await createSession(cfg.defaultPermissionMode ?? "default", cwd);
       if (id && cfg.popOutByDefault) popOutSession(id);
     }
-  }, []);
-
-  const handleToggleTree = useCallback((path: string) => {
-    setExpandedPaths(prev => {
-      const next = new Set(prev);
-      next.has(path) ? next.delete(path) : next.add(path);
-      return next;
-    });
   }, []);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -417,37 +391,16 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
                   </>
                 ) : (
                   <>
-                    {dirTree.commonPrefix && dirTree.commonPrefix !== "/" && (
-                      <div className="htree-prefix">{dirTree.commonPrefix}</div>
-                    )}
-                    {dirTree.roots.map(node => (
-                      <TreeNodeView
-                        key={node.fullPath}
-                        node={node}
+                    {dirGroups.groups.map(group => (
+                      <DirGroupView
+                        key={group.directory}
+                        group={group}
                         poppedOutIds={poppedOutIds}
-                        expandedPaths={expandedPaths}
-                        onToggle={handleToggleTree}
                       />
                     ))}
-                    {dirTree.rootSessions.map(s => (
+                    {dirGroups.unknown.map(s => (
                       <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
                     ))}
-                    {dirTree.unknown.length > 0 && (
-                      <div className="htree-node">
-                        <button className="htree-header" onClick={() => handleToggleTree("__unknown__")}>
-                          <span className="htree-toggle">{!expandedPaths.has("__unknown__") ? "\u25BE" : "\u25B8"}</span>
-                          <span className="htree-name">(no directory)</span>
-                          <span className="htree-count">{dirTree.unknown.length}</span>
-                        </button>
-                        {!expandedPaths.has("__unknown__") && (
-                          <div className="htree-children">
-                            {dirTree.unknown.map(s => (
-                              <SessionCard key={s.id} session={s} poppedOut={poppedOutIds.has(s.id)} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </>
                 )}
               </>

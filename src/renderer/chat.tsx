@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Marked } from "marked";
-import type { ChatEntry } from "../ipc.js";
+import type { ChatEntry, ToolStatus } from "../ipc.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
 import { getSender, formatTokens, type Sender } from "./utils.js";
 import { formatTime } from "./time.js";
@@ -74,7 +74,7 @@ const AVATAR_CLASSES: Record<Sender, string> = {
 
 // ─── Tool entry (collapsible, delegates to view registry) ────────
 
-const STATUS_ICONS: Record<string, React.ReactNode> = {
+const STATUS_ICONS: Record<ToolStatus, React.ReactNode> = {
   running:    <span className="tool-icon spinning" />,
   done:       <span className="tool-icon done" />,
   blocked:    <span className="tool-icon blocked" />,

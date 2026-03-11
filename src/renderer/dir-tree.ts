@@ -41,6 +41,34 @@ export function countSessions(node: DirTreeNode): number {
   return count;
 }
 
+// ─── Flat directory grouping ─────────────────────────────────────
+
+export type DirGroup = {
+  directory: string;
+  sessions: SessionData[];
+};
+
+export function groupByDirectory(sessions: SessionData[]): { groups: DirGroup[]; unknown: SessionData[] } {
+  const unknown: SessionData[] = [];
+  const dirMap = new Map<string, SessionData[]>();
+
+  for (const s of sessions) {
+    if (s.cwd) {
+      let list = dirMap.get(s.cwd);
+      if (!list) { list = []; dirMap.set(s.cwd, list); }
+      list.push(s);
+    } else {
+      unknown.push(s);
+    }
+  }
+
+  const groups = [...dirMap.entries()]
+    .map(([directory, sess]) => ({ directory, sessions: sess }))
+    .sort((a, b) => a.directory.localeCompare(b.directory));
+
+  return { groups, unknown };
+}
+
 // ─── Tree builder ───────────────────────────────────────────────
 
 export function buildDirTree(sessions: SessionData[]): DirTree {

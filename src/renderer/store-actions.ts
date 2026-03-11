@@ -358,7 +358,11 @@ function handleEvent(event: SessionEvent): void {
 
   const effects = applySessionEvent(data, event);
   if (effects.flushQueue) flushQueue(effects.flushQueue);
-  if (effects.addPoppedOut) state.poppedOutIds.add(effects.addPoppedOut);
+  if (effects.addPoppedOut) {
+    state.poppedOutIds.add(effects.addPoppedOut);
+    // Clear active session in main window when it gets popped out
+    if (!IS_POPOUT && state.activeId === effects.addPoppedOut) state.activeId = null;
+  }
   if (effects.removePoppedOut) state.poppedOutIds.delete(effects.removePoppedOut);
 
   // Replace object reference so memo'd components re-render
@@ -371,8 +375,9 @@ function handleEvent(event: SessionEvent): void {
 
 export async function popOutSession(id: string): Promise<void> {
   await api().popOutSession({ sessionId: id });
-  // Navigate main window back to sessions after popping out
+  // Clear active session in main window so the chat area doesn't show the popped-out session
   if (!IS_POPOUT) {
+    if (state.activeId === id) state.activeId = null;
     state.sidebarView = "sessions";
     emit();
   }

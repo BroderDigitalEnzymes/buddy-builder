@@ -6,6 +6,7 @@ import type {
   PolicyPreset,
   ChatEntry,
   ImageData,
+  SessionState,
 } from "../ipc.js";
 
 export type { ChatEntry } from "../ipc.js";
@@ -22,7 +23,7 @@ export type SessionData = {
   id: string;
   name: string;
   projectName: string;
-  state: string;
+  state: SessionState;
   claudeSessionId: string | null;
   cwd: string | null;
   permissionMode: PermissionMode;
@@ -49,7 +50,8 @@ export type SessionData = {
 
 // ─── Store ───────────────────────────────────────────────────────
 
-export type ViewMode = "sessions" | "settings";
+export const ViewModes = ["sessions", "settings"] as const;
+export type ViewMode = (typeof ViewModes)[number];
 
 export type StoreState = {
   sessions: Map<string, SessionData>;

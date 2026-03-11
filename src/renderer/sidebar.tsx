@@ -6,7 +6,7 @@ import type { PermissionMode } from "../ipc.js";
 import { useDrag } from "./hooks.js";
 import { api } from "./utils.js";
 import { relativeTime } from "./time.js";
-import { buildDirTree, countSessions, type DirTreeNode, type DirTree } from "./dir-tree.js";
+import { groupByDirectory, type DirGroup } from "./dir-tree.js";
 import { fuzzyMatch, sessionMatchesQuery, splitSessions } from "./session-filters.js";
 
 // ─── Editable session label ──────────────────────────────────────
@@ -116,16 +116,16 @@ function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, 
   );
 }
 
-// ─── Directory tree node (recursive) ─────────────────────────────
+// ─── Directory group list (flat grouping by cwd) ─────────────────
 
-type DirTreeNodeViewProps = {
-  node: DirTreeNode;
-  depth: number;
+function DirGroupList({
+  groups, unknown, activeId, poppedOutIds,
+  onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live,
+}: {
+  groups: DirGroup[];
+  unknown: SessionData[];
   activeId: string | null;
   poppedOutIds?: Set<string>;
-  expandedPaths: Set<string>;
-  isSearching: boolean;
-  onToggle: (path: string) => void;
   onSwitch: (id: string) => void;
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
@@ -133,99 +133,8 @@ type DirTreeNodeViewProps = {
   onCreate: (cwd: string) => void;
   onToggleFavorite: (id: string) => void;
   live: boolean;
-};
-
-function DirTreeNodeView({
-  node, depth, activeId, poppedOutIds, expandedPaths, isSearching,
-  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live,
-}: DirTreeNodeViewProps) {
-  const defaultOpen = true;
-  const userToggled = expandedPaths.has(node.fullPath);
-  const isOpen = defaultOpen ? !userToggled : userToggled;
-
-  const childNodes = [...node.children.values()].sort((a, b) => a.segment.localeCompare(b.segment));
-
-  return (
-    <div className="dir-tree-node">
-      <button
-        className="dir-tree-header"
-        style={{ paddingLeft: `${12 + depth * 14}px` }}
-        onClick={() => onToggle(node.fullPath)}
-      >
-        <span className="dir-tree-toggle">{isOpen ? "\u2212" : "+"}</span>
-        <span className="dir-tree-name">{node.segment}</span>
-        <span className="dir-tree-count">{countSessions(node)}</span>
-        <span
-          className="dir-tree-new"
-          title={`New session in ${node.fullPath}`}
-          onClick={(e) => { e.stopPropagation(); onCreate(node.fullPath); }}
-        >+</span>
-      </button>
-      {isOpen && (
-        <>
-          {node.sessions.map(s => (
-            <SessionItem
-              key={s.id}
-              session={s}
-              depth={depth + 1}
-              activeId={activeId}
-              poppedOutIds={poppedOutIds}
-              live={live}
-              onSwitch={onSwitch}
-              onKill={onKill}
-              onDelete={onDelete}
-              onRename={onRename}
-              onToggleFavorite={onToggleFavorite}
-            />
-          ))}
-          {childNodes.map(child => (
-            <DirTreeNodeView
-              key={child.fullPath}
-              node={child}
-              depth={depth + 1}
-              activeId={activeId}
-              poppedOutIds={poppedOutIds}
-              expandedPaths={expandedPaths}
-              isSearching={isSearching}
-              onToggle={onToggle}
-              onSwitch={onSwitch}
-              onKill={onKill}
-              onDelete={onDelete}
-              onRename={onRename}
-              onCreate={onCreate}
-              onToggleFavorite={onToggleFavorite}
-              live={live}
-            />
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Directory tree list ─────────────────────────────────────────
-
-type DirTreeListProps = {
-  tree: DirTree;
-  activeId: string | null;
-  poppedOutIds?: Set<string>;
-  expandedPaths: Set<string>;
-  isSearching: boolean;
-  onToggle: (path: string) => void;
-  onSwitch: (id: string) => void;
-  onKill: (id: string) => void;
-  onDelete: (id: string) => void;
-  onRename: (id: string, name: string) => void;
-  onCreate: (cwd: string) => void;
-  onToggleFavorite: (id: string) => void;
-  live: boolean;
-};
-
-function DirTreeList({
-  tree, activeId, poppedOutIds, expandedPaths, isSearching,
-  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live,
-}: DirTreeListProps) {
-  if (tree.roots.length === 0 && tree.rootSessions.length === 0 && tree.unknown.length === 0) {
+}) {
+  if (groups.length === 0 && unknown.length === 0) {
     return (
       <div className="panel-empty">
         {live ? "No active sessions" : "No sessions found"}
@@ -233,59 +142,22 @@ function DirTreeList({
     );
   }
 
-  const unknownOpen = isSearching || expandedPaths.has("__unknown__");
-
   return (
     <>
-      {tree.commonPrefix && tree.commonPrefix !== "/" && (
-        <div className="dir-tree-prefix" title={tree.commonPrefix}>{tree.commonPrefix}</div>
-      )}
-      {tree.roots.map(node => (
-        <DirTreeNodeView
-          key={node.fullPath}
-          node={node}
-          depth={0}
-          activeId={activeId}
-          poppedOutIds={poppedOutIds}
-          expandedPaths={expandedPaths}
-          isSearching={isSearching}
-          onToggle={onToggle}
-          onSwitch={onSwitch}
-          onKill={onKill}
-          onDelete={onDelete}
-          onRename={onRename}
-          onCreate={onCreate}
-          onToggleFavorite={onToggleFavorite}
-          live={live}
-        />
-      ))}
-      {tree.rootSessions.map(s => (
-        <SessionItem
-          key={s.id}
-          session={s}
-          depth={0}
-          activeId={activeId}
-          poppedOutIds={poppedOutIds}
-          live={live}
-          onSwitch={onSwitch}
-          onKill={onKill}
-          onDelete={onDelete}
-          onRename={onRename}
-          onToggleFavorite={onToggleFavorite}
-        />
-      ))}
-      {tree.unknown.length > 0 && (
-        <div className="dir-tree-node">
-          <button
+      {groups.map(group => (
+        <div key={group.directory} className="dir-tree-node">
+          <div
             className="dir-tree-header"
             style={{ paddingLeft: "12px" }}
-            onClick={() => onToggle("__unknown__")}
           >
-            <span className="dir-tree-toggle">{unknownOpen ? "\u2212" : "+"}</span>
-            <span className="dir-tree-name">(unknown)</span>
-            <span className="dir-tree-count">{tree.unknown.length}</span>
-          </button>
-          {unknownOpen && tree.unknown.map(s => (
+            <span className="dir-tree-name" title={group.directory}>{group.directory}</span>
+            <span
+              className="dir-tree-new"
+              title={`New session in ${group.directory}`}
+              onClick={(e) => { e.stopPropagation(); onCreate(group.directory); }}
+            >+</span>
+          </div>
+          {group.sessions.map(s => (
             <SessionItem
               key={s.id}
               session={s}
@@ -301,10 +173,27 @@ function DirTreeList({
             />
           ))}
         </div>
-      )}
+      ))}
+      {unknown.length > 0 && unknown.map(s => (
+        <SessionItem
+          key={s.id}
+          session={s}
+          depth={0}
+          activeId={activeId}
+          poppedOutIds={poppedOutIds}
+          live={live}
+          onSwitch={onSwitch}
+          onKill={onKill}
+          onDelete={onDelete}
+          onRename={onRename}
+          onToggleFavorite={onToggleFavorite}
+        />
+      ))}
     </>
   );
 }
+
+type HistoryMode = "flat" | "tree";
 
 // ─── Sidebar ─────────────────────────────────────────────────────
 
@@ -335,9 +224,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
     });
   }, []);
 
-  const [historyMode, setHistoryMode] = useState<"flat" | "tree">("flat");
-  const [liveExpanded, setLiveExpanded] = useState<Set<string>>(new Set());
-  const [historyExpanded, setHistoryExpanded] = useState<Set<string>>(new Set());
+  const [historyMode, setHistoryMode] = useState<HistoryMode>("flat");
   const panelsRef = useRef<HTMLDivElement>(null);
   const { value: topRatio, onMouseDown } = useDrag({
     initial: 0.3, min: 0.08, max: 0.92, cursor: "row-resize",
@@ -352,25 +239,17 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
     getPosition: (e) => e.clientX,
   });
 
-  const isSearching = search.length > 0;
   const q = search;
 
   // Split into live / pinned / history via pure module
   const pinnedIds = useMemo(() => new Set(sessions.filter(s => s.favorite).map(s => s.id)), [sessions]);
   const { live: filteredLive, pinned: pinnedSessions, history: historySessions, historyAll: historyForTree } = useMemo(
-    () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT),
-    [sessions, q, pinnedIds],
+    () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT, poppedOutIds),
+    [sessions, q, pinnedIds, poppedOutIds],
   );
 
-  const liveTree = useMemo(() => buildDirTree(filteredLive), [filteredLive]);
-  const historyTree = useMemo(() => buildDirTree(historyForTree), [historyForTree]);
-
-  const toggleLive = useCallback((p: string) => {
-    setLiveExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
-  }, []);
-  const toggleHistory = useCallback((p: string) => {
-    setHistoryExpanded((prev) => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n; });
-  }, []);
+  const liveGroups = useMemo(() => groupByDirectory(filteredLive), [filteredLive]);
+  const historyGroups = useMemo(() => groupByDirectory(historyForTree), [historyForTree]);
   const handleCreateInDir = useCallback((cwd: string) => onCreate(perm, cwd), [perm, onCreate]);
   const handleBrowse = useCallback(async () => {
     const folder = await pickFolder();
@@ -417,13 +296,11 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
           <div className="sidebar-panel" style={{ flex: `0 0 ${topRatio * 100}%` }}>
             <div className="panel-label">Live</div>
             <div className="panel-scroll">
-              <DirTreeList
-                tree={liveTree}
+              <DirGroupList
+                groups={liveGroups.groups}
+                unknown={liveGroups.unknown}
                 activeId={activeId}
                 poppedOutIds={poppedOutIds}
-                expandedPaths={liveExpanded}
-                isSearching={isSearching}
-                onToggle={toggleLive}
                 onSwitch={onSwitch}
                 onKill={onKill}
                 onDelete={onDelete}
@@ -476,13 +353,11 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                 <div className="pinned-divider" />
               )}
               {historyMode === "tree" ? (
-                <DirTreeList
-                  tree={historyTree}
+                <DirGroupList
+                  groups={historyGroups.groups}
+                  unknown={historyGroups.unknown}
                   activeId={activeId}
                   poppedOutIds={poppedOutIds}
-                  expandedPaths={historyExpanded}
-                  isSearching={isSearching}
-                  onToggle={toggleHistory}
                   onSwitch={onSwitch}
                   onKill={onKill}
                   onDelete={onDelete}

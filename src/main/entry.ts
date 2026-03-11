@@ -301,8 +301,18 @@ function buildHandlers(mgr: SessionManager): Handlers {
     popOutSession:  ({ sessionId }) => { createPopoutWindow(sessionId); },
     popInSession:   ({ sessionId }) => {
       const win = findPopout(sessionId);
-      // Defer close so the IPC invoke response can be sent before the window is destroyed
-      if (win && !win.isDestroyed()) setImmediate(() => win.close());
+      if (!win || win.isDestroyed()) return;
+      // Use destroy() instead of close() to avoid native crash on Windows frameless windows
+      dlog(`[popInSession] destroying popout id=${win.id} session=${sessionId}`);
+      setImmediate(() => {
+        if (!win.isDestroyed()) win.destroy();
+        // Show & focus the main window
+        const main = getMain();
+        if (main && !main.isDestroyed()) {
+          main.show();
+          main.focus();
+        }
+      });
     },
     focusPopout:    ({ sessionId }) => {
       const win = findPopout(sessionId);
