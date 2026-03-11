@@ -1,5 +1,6 @@
 import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { ImageData } from "../ipc.js";
+import { getDraft, setDraft } from "./store.js";
 import { SessionActionButtons } from "./session-actions.js";
 import { fileToImageData, extractImageFiles } from "./image-data.js";
 
@@ -47,6 +48,7 @@ function SlashAutocomplete({ commands, selectedIndex, onSelect }: SlashAutocompl
 // ─── Input bar ───────────────────────────────────────────────────
 
 type InputBarProps = {
+  sessionId: string | null;
   disabled: boolean;
   isBusy: boolean;
   queueCount: number;
@@ -61,11 +63,29 @@ type InputBarProps = {
   onResumeTerminal: () => void;
 };
 
-export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, showResume, slashCommands, claudeSessionId, cwd, permissionMode, onSend, onInterrupt, onResume, onResumeTerminal }: InputBarProps) {
+export const InputBar = memo(function InputBar({ sessionId, disabled, isBusy, queueCount, showResume, slashCommands, claudeSessionId, cwd, permissionMode, onSend, onInterrupt, onResume, onResumeTerminal }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [pendingImages, setPendingImages] = useState<ImageData[]>([]);
   const lastEscapeRef = useRef(0);
   const [escapeHint, setEscapeHint] = useState(false);
+
+  // Restore draft when switching sessions
+  const prevSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Save draft for the previous session
+    if (prevSessionRef.current && prevSessionRef.current !== sessionId) {
+      setDraft(prevSessionRef.current, el.value);
+    }
+    // Restore draft for the new session
+    if (sessionId && sessionId !== prevSessionRef.current) {
+      el.value = getDraft(sessionId);
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 120) + "px";
+    }
+    prevSessionRef.current = sessionId;
+  }, [sessionId]);
 
   // Slash command autocomplete state
   const [slashOpen, setSlashOpen] = useState(false);
@@ -96,6 +116,7 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
     if (!text && pendingImages.length === 0) return;
     el.value = "";
     el.style.height = "auto";
+    if (sessionId) setDraft(sessionId, "");
     onSend(text || "(image)", pendingImages.length > 0 ? pendingImages : undefined);
     setPendingImages([]);
     requestAnimationFrame(() => el.focus());
@@ -156,6 +177,8 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
+    // Save draft
+    if (sessionId) setDraft(sessionId, el.value);
     // Slash autocomplete trigger
     const value = el.value;
     if (value.startsWith("/") && !value.includes(" ")) {
@@ -165,7 +188,7 @@ export const InputBar = memo(function InputBar({ disabled, isBusy, queueCount, s
     } else {
       setSlashOpen(false);
     }
-  }, []);
+  }, [sessionId]);
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;

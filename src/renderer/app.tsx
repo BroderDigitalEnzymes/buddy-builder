@@ -141,6 +141,7 @@ function App() {
       <MessageList entries={entries} isBusy={activeSession?.state === "busy"} />
       {!showResume && (
         <InputBar
+          sessionId={activeId}
           disabled={!canSend}
           isBusy={activeSession?.state === "busy"}
           queueCount={activeSession?.messageQueue.length ?? 0}

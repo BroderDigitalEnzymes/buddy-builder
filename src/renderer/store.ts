@@ -75,6 +75,14 @@ export const state: StoreState = {
   indexStatus: { totalSessions: 0, indexedSessions: 0, isIndexing: false },
 };
 
+// ─── Per-session message drafts (in-memory only) ─────────────────
+const drafts = new Map<string, string>();
+export function getDraft(sessionId: string): string { return drafts.get(sessionId) ?? ""; }
+export function setDraft(sessionId: string, text: string): void {
+  if (text) drafts.set(sessionId, text);
+  else drafts.delete(sessionId);
+}
+
 // useSyncExternalStore needs getSnapshot to return the same reference
 // when nothing changed. We use a version number as the snapshot.
 let currentVersion = 0;
