@@ -15,6 +15,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [defaultPerm, setDefaultPerm] = useState<PermissionMode>("default");
   const [defaultFolder, setDefaultFolder] = useState("");
   const [minimizeToTray, setMinimizeToTray] = useState(true);
+  const [popOutByDefault, setPopOutByDefault] = useState(false);
   const [status, setStatus] = useState("");
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setDefaultPerm(cfg.defaultPermissionMode ?? "default");
         setDefaultFolder(cfg.defaultProjectsFolder ?? "");
         setMinimizeToTray(cfg.minimizeToTray ?? true);
+        setPopOutByDefault(cfg.popOutByDefault ?? false);
       });
       setStatus("");
     }
@@ -31,12 +33,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const handleSave = useCallback(async () => {
     try {
-      await api().setConfig({ claudePath, defaultPermissionMode: defaultPerm, defaultProjectsFolder: defaultFolder, minimizeToTray });
+      await api().setConfig({ claudePath, defaultPermissionMode: defaultPerm, defaultProjectsFolder: defaultFolder, minimizeToTray, popOutByDefault });
       setStatus("Saved. Restart sessions for changes to take effect.");
     } catch (err) {
       setStatus(`Error: ${err}`);
     }
-  }, [claudePath, defaultPerm, defaultFolder, minimizeToTray]);
+  }, [claudePath, defaultPerm, defaultFolder, minimizeToTray, popOutByDefault]);
 
   const handleBrowseFolder = useCallback(async () => {
     const folder = await api().pickFolder();
@@ -109,6 +111,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 onClick={() => setMinimizeToTray(!minimizeToTray)}
                 role="switch"
                 aria-checked={minimizeToTray}
+              >
+                <span className="setting-toggle-knob" />
+              </button>
+            </label>
+            <label className="setting-label setting-toggle-row">
+              <span>
+                Pop out new sessions by default
+                <span className="setting-hint">Automatically open new and resumed sessions in a popout window</span>
+              </span>
+              <button
+                type="button"
+                className={`setting-toggle-switch${popOutByDefault ? " active" : ""}`}
+                onClick={() => setPopOutByDefault(!popOutByDefault)}
+                role="switch"
+                aria-checked={popOutByDefault}
               >
                 <span className="setting-toggle-knob" />
               </button>

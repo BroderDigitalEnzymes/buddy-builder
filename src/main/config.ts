@@ -8,6 +8,7 @@ const DEFAULTS: AppConfig = {
   defaultPermissionMode: "default",
   defaultProjectsFolder: "",
   minimizeToTray: true,
+  popOutByDefault: false,
 };
 
 function configPath(): string {

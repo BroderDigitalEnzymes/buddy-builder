@@ -165,6 +165,7 @@ export type AppConfig = {
   defaultPermissionMode: PermissionMode;
   defaultProjectsFolder: string;
   minimizeToTray: boolean;
+  popOutByDefault: boolean;
 };
 
 /** Invoke channels: renderer calls, main handles. */

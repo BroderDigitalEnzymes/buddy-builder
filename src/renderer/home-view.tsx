@@ -13,6 +13,7 @@ import {
   focusPopout,
   pickFolder,
   setSearchQuery,
+  popOutSession,
 } from "./store-actions.js";
 import { SettingsModal } from "./settings-modal.js";
 import { SessionActionButtons } from "./session-actions.js";
@@ -108,7 +109,16 @@ function SessionCard({ session, poppedOut }: {
             permissionMode={session.permissionMode}
             showView
             onView={() => openInApp(session.id)}
-            onResume={() => { resumeSession(session.id); openInApp(session.id); }}
+            onResume={async () => {
+              resumeSession(session.id);
+              const { api } = await import("./utils.js");
+              const cfg = await api().getConfig();
+              if (cfg.popOutByDefault) {
+                popOutSession(session.id);
+              } else {
+                openInApp(session.id);
+              }
+            }}
             onResumeTerminal={() => resumeInTerminal(session.id)}
           />
         ) : (
@@ -259,15 +269,19 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
     const cfg = await api().getConfig();
     const cwd = cfg.defaultProjectsFolder || await pickFolder();
     if (cwd) {
-      await createSession("default" as PermissionMode, cwd);
+      const id = await createSession(cfg.defaultPermissionMode ?? "default", cwd);
+      if (id && cfg.popOutByDefault) popOutSession(id);
     }
   }, []);
 
   const handleNewPickFolder = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const { api } = await import("./utils.js");
+    const cfg = await api().getConfig();
     const cwd = await pickFolder();
     if (cwd) {
-      await createSession("default" as PermissionMode, cwd);
+      const id = await createSession(cfg.defaultPermissionMode ?? "default", cwd);
+      if (id && cfg.popOutByDefault) popOutSession(id);
     }
   }, []);
 
