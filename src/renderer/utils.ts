@@ -61,7 +61,7 @@ export function buildCliCommand(opts: CliCommandOptions): string {
 
   let cmd = parts.join(" ");
   if (opts.cwd) {
-    cmd = `cd ${opts.cwd} && ${cmd}`;
+    cmd = `cd "${opts.cwd}" && ${cmd}`;
   }
 
   return cmd;

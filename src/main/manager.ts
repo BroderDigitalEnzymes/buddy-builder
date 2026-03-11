@@ -190,7 +190,7 @@ export type SessionManager = {
   remove(id: string): void;
   rename(id: string, name: string): void;
   resume(id: string): Promise<void>;
-  getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null };
+  getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null; permissionMode: PermissionMode };
   list(): SessionInfo[];
   getEntries(id: string): ChatEntry[];
   getMeta(id: string): IpcSessionMeta;
@@ -424,10 +424,10 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });
     },
 
-    getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null } {
+    getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null; permissionMode: PermissionMode } {
       const managed = getManaged(id);
       if (!managed.claudeSessionId) throw new Error("No Claude session ID to resume");
-      return { claudeSessionId: managed.claudeSessionId, cwd: managed.cwd };
+      return { claudeSessionId: managed.claudeSessionId, cwd: managed.cwd, permissionMode: managed.permissionMode };
     },
 
     list(): SessionInfo[] {

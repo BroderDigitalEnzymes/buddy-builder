@@ -265,8 +265,9 @@ function buildHandlers(mgr: SessionManager): Handlers {
     setFavorite:       ({ sessionId, favorite }) => { mgr.setFavorite(sessionId, favorite); },
     resumeSession:     ({ sessionId }) => mgr.resume(sessionId),
     resumeInTerminal:  ({ sessionId }) => {
-      const { claudeSessionId, cwd } = mgr.getResumeInfo(sessionId);
-      openInTerminal(cwd ?? process.env.HOME ?? process.env.USERPROFILE ?? ".", `claude --resume ${claudeSessionId}`);
+      const { claudeSessionId, cwd, permissionMode } = mgr.getResumeInfo(sessionId);
+      const skipPerms = permissionMode === "bypassPermissions" ? " --dangerously-skip-permissions" : "";
+      openInTerminal(cwd ?? process.env.HOME ?? process.env.USERPROFILE ?? ".", `claude --resume ${claudeSessionId}${skipPerms}`);
     },
     deleteSession:     ({ sessionId }) => { mgr.remove(sessionId); },
     getSessionEntries: ({ sessionId }) => mgr.getEntries(sessionId),

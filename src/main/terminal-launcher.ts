@@ -6,7 +6,8 @@ import { spawn as spawnChild } from "child_process";
  */
 export function openInTerminal(cwd: string, command: string): void {
   if (process.platform === "win32") {
-    spawnChild("cmd.exe", ["/c", "start", "cmd", "/k", `cd /d "${cwd}" && ${command}`], { detached: true, stdio: "ignore" });
+    // "start" treats the first quoted arg as a window title — pass "" explicitly.
+    spawnChild("cmd.exe", ["/c", "start", '""', "/d", cwd, "cmd", "/k", command], { detached: true, stdio: "ignore" });
   } else if (process.platform === "darwin") {
     const cmd = `cd ${cwd} && ${command}`;
     spawnChild("osascript", [
