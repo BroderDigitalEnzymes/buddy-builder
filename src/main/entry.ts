@@ -392,16 +392,22 @@ app.whenReady().then(() => {
     }
   };
 
-  // Resolve full path to claude binary — packaged Electron apps don't inherit shell PATH
+  // Packaged Electron apps don't inherit shell PATH — resolve it from a login shell
+  // so all subprocesses (sessions, auto-naming) can find claude, node, etc.
   let claudePath = config.claudePath;
-  if (claudePath === "claude") {
-    try {
-      const shell = process.env.SHELL || "/bin/zsh";
+  try {
+    const shell = process.env.SHELL || "/bin/zsh";
+    const shellPath = execSync(`${shell} -ilc "echo \\$PATH"`, { encoding: "utf-8" }).trim();
+    if (shellPath) {
+      process.env.PATH = shellPath;
+      console.log("[shell] inherited PATH from login shell");
+    }
+    if (claudePath === "claude") {
       claudePath = execSync(`${shell} -ilc "which claude"`, { encoding: "utf-8" }).trim();
       console.log("[claude] resolved path:", claudePath);
-    } catch {
-      console.warn("[claude] could not resolve full path, using 'claude'");
     }
+  } catch {
+    console.warn("[shell] could not resolve login shell PATH");
   }
 
   manager = createSessionManager(wrappedDispatch, claudePath);
