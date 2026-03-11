@@ -244,8 +244,8 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
   // Split into live / pinned / history via pure module
   const pinnedIds = useMemo(() => new Set(sessions.filter(s => s.favorite).map(s => s.id)), [sessions]);
   const { live: filteredLive, pinned: pinnedSessions, history: historySessions, historyAll: historyForTree } = useMemo(
-    () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT, poppedOutIds),
-    [sessions, q, pinnedIds, poppedOutIds],
+    () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT),
+    [sessions, q, pinnedIds],
   );
 
   const liveGroups = useMemo(() => groupByDirectory(filteredLive), [filteredLive]);
