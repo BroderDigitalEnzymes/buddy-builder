@@ -127,6 +127,31 @@
 }
 .rate-limit-icon { font-size: 16px; }
 
+/* ─── Resume banner (sticky top, centered) ─── */
+
+.resume-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.resume-banner-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.resume-banner .session-action-btns {
+  justify-content: center;
+}
+
 /* ─── Chat header icon buttons ─── */
 
 .chat-header-icon-btn {
@@ -150,6 +175,12 @@
 
 .popout-btn svg {
   display: block;
+}
+
+.pin-btn.pinned {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
 }
 
 /* ─── PolicyPicker (shared component) ─── */
@@ -310,8 +341,6 @@
   gap: 12px;
   padding: 4px 24px;
   transition: background 0.1s;
-  max-width: 860px;
-  margin: 0 auto;
   width: 100%;
 }
 

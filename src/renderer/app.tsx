@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   useStoreVersion,
@@ -25,19 +25,36 @@ import {
   focusPopout,
   navigateHome,
   openInApp,
+  showSettings,
 } from "./store-actions.js";
 import { TitleBar, InfoWindow } from "./components.js";
 import { ChatHeader } from "./chat-header.js";
 import { MessageList, RateLimitBanner } from "./chat.js";
 import { InputBar } from "./input-bar.js";
-import { HomeView } from "./home-view.js";
+import { Sidebar } from "./sidebar.js";
+import { IconRail } from "./icon-rail.js";
+import { SettingsView } from "./settings-view.js";
+import { WelcomeView } from "./welcome-view.js";
 import { StatusBar } from "./status-bar.js";
+import { SessionActionButtons } from "./session-actions.js";
 import type { ImageData, PolicyPreset } from "../ipc.js";
 
 function App() {
   // Subscribe to all store changes via version counter
   useStoreVersion();
-  const { sessions, activeId, currentView, poppedOutIds } = getState();
+  const { sessions, activeId, sidebarView, poppedOutIds } = getState();
+
+  // Search state (lifted here so title bar + sidebar share it)
+  const [search, setSearch] = useState("");
+
+  // Always-on-top state (popout windows only)
+  const [isPinned, setIsPinned] = useState(false);
+  const handleTogglePin = useCallback(async () => {
+    const next = !isPinned;
+    setIsPinned(next);
+    const { api } = await import("./utils.js");
+    api().setAlwaysOnTop({ alwaysOnTop: next });
+  }, [isPinned]);
 
   // Load persisted sessions on mount
   useEffect(() => {
@@ -67,6 +84,22 @@ function App() {
     if (activeId) popInSession(activeId);
   }, [activeId]);
 
+  const handleSwitch = useCallback((id: string) => {
+    if (poppedOutIds.has(id)) { focusPopout(id); return; }
+    openInApp(id);
+  }, [poppedOutIds]);
+
+  const handleNewSession = useCallback(async () => {
+    const { api } = await import("./utils.js");
+    const { pickFolder } = await import("./store-actions.js");
+    const cfg = await api().getConfig();
+    const cwd = cfg.defaultProjectsFolder || await pickFolder();
+    if (cwd) {
+      const id = await createSession(cfg.defaultPermissionMode ?? "default", cwd);
+      if (id && cfg.popOutByDefault) popOutSession(id);
+    }
+  }, []);
+
   // Merge skills, agents, and slash commands into a single deduped sorted list
   const mergedSlashCommands = useMemo(() => {
     if (!activeSession) return [];
@@ -86,26 +119,42 @@ function App() {
         onSetPreset={handlePreset}
         onToggleFavorite={handleToggleFavorite}
         onOpenTerminal={resumeInTerminal}
-        onBack={IS_POPOUT ? undefined : navigateHome}
+        onBack={undefined}
         onPopOut={IS_POPOUT ? undefined : handlePopOut}
         onPopIn={IS_POPOUT ? handlePopIn : undefined}
+        isPinned={IS_POPOUT ? isPinned : undefined}
+        onTogglePin={IS_POPOUT ? handleTogglePin : undefined}
       />
       <RateLimitBanner rateLimit={activeSession?.rateLimit ?? null} />
+      {showResume && (
+        <div className="resume-banner">
+          <span className="resume-banner-label">This session has ended</span>
+          <SessionActionButtons
+            claudeSessionId={activeSession?.claudeSessionId ?? null}
+            cwd={activeSession?.cwd ?? null}
+            permissionMode={activeSession?.permissionMode}
+            onResume={handleResume}
+            onResumeTerminal={handleResumeTerminal}
+          />
+        </div>
+      )}
       <MessageList entries={entries} isBusy={activeSession?.state === "busy"} />
-      <InputBar
-        disabled={!canSend}
-        isBusy={activeSession?.state === "busy"}
-        queueCount={activeSession?.messageQueue.length ?? 0}
-        showResume={showResume}
-        slashCommands={mergedSlashCommands}
-        claudeSessionId={activeSession?.claudeSessionId ?? null}
-        cwd={activeSession?.cwd ?? null}
-        permissionMode={activeSession?.permissionMode}
-        onSend={handleSend}
-        onInterrupt={handleInterrupt}
-        onResume={handleResume}
-        onResumeTerminal={handleResumeTerminal}
-      />
+      {!showResume && (
+        <InputBar
+          disabled={!canSend}
+          isBusy={activeSession?.state === "busy"}
+          queueCount={activeSession?.messageQueue.length ?? 0}
+          showResume={false}
+          slashCommands={mergedSlashCommands}
+          claudeSessionId={activeSession?.claudeSessionId ?? null}
+          cwd={activeSession?.cwd ?? null}
+          permissionMode={activeSession?.permissionMode}
+          onSend={handleSend}
+          onInterrupt={handleInterrupt}
+          onResume={handleResume}
+          onResumeTerminal={handleResumeTerminal}
+        />
+      )}
     </div>
   );
 
@@ -128,12 +177,43 @@ function App() {
     );
   }
 
+  // Determine main area content
+  let mainContent: React.ReactNode;
+  if (sidebarView === "settings") {
+    mainContent = <SettingsView />;
+  } else if (activeSession) {
+    mainContent = chatArea;
+  } else {
+    mainContent = <WelcomeView onNewSession={handleNewSession} />;
+  }
+
   return (
     <>
-      <TitleBar />
-      {currentView === "chat" ? chatArea : (
-        <HomeView sessions={sessionList} poppedOutIds={poppedOutIds} />
-      )}
+      <TitleBar search={search} onSearchChange={setSearch} />
+      <div id="app-layout">
+        <IconRail
+          sidebarView={sidebarView}
+          onShowSessions={navigateHome}
+          onShowSettings={showSettings}
+        />
+        {sidebarView === "sessions" && (
+          <Sidebar
+            sessions={sessionList}
+            activeId={activeId}
+            poppedOutIds={poppedOutIds}
+            search={search}
+            onSwitch={handleSwitch}
+            onKill={killSession}
+            onDelete={deleteSession}
+            onRename={renameSession}
+            onCreate={createSession}
+            onToggleFavorite={toggleFavorite}
+          />
+        )}
+        <div id="main-area-wrap">
+          {mainContent}
+        </div>
+      </div>
       <StatusBar />
     </>
   );

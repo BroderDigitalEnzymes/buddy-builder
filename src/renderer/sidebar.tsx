@@ -2,69 +2,12 @@ import React, { memo, useState, useRef, useEffect, useCallback, useMemo } from "
 import type { SessionData } from "./store.js";
 import { pickFolder } from "./store-actions.js";
 import type { PermissionMode } from "../ipc.js";
-import { SettingsModal } from "./settings-modal.js";
-import { PolicyPicker, PERM_ITEMS } from "./chat-header.js";
+
 import { useDrag } from "./hooks.js";
 import { api } from "./utils.js";
 import { relativeTime } from "./time.js";
 import { buildDirTree, countSessions, type DirTreeNode, type DirTree } from "./dir-tree.js";
-import { sanitizeFolderName, fuzzyMatch, sessionMatchesQuery, splitSessions } from "./session-filters.js";
-
-// ─── Naming modal ─────────────────────────────────────────────────
-
-type NamingModalProps = {
-  defaultFolder: string;
-  onConfirm: (name: string, folderPath: string) => void;
-  onCancel: () => void;
-};
-
-function NamingModal({ defaultFolder, onConfirm, onCancel }: NamingModalProps) {
-  const [name, setName] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  const sanitized = sanitizeFolderName(name);
-  const fullPath = sanitized ? `${defaultFolder}/${sanitized}` : "";
-  const valid = sanitized.length > 0;
-
-  const handleConfirm = useCallback(() => {
-    if (valid) onConfirm(name.trim(), fullPath);
-  }, [valid, name, fullPath, onConfirm]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && valid) handleConfirm();
-    if (e.key === "Escape") onCancel();
-  }, [valid, handleConfirm, onCancel]);
-
-  return (
-    <div className="naming-modal-overlay" onClick={onCancel}>
-      <div className="naming-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="naming-modal-title">New Session</div>
-        <input
-          ref={inputRef}
-          className="naming-modal-input"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="My Cool Project"
-          spellCheck={false}
-        />
-        {sanitized && (
-          <div className="naming-modal-preview">
-            <span className="naming-folder-name">{sanitized}</span>
-            <span className="naming-full-path" title={fullPath}>{fullPath}</span>
-          </div>
-        )}
-        <div className="naming-modal-actions">
-          <button className="naming-btn naming-btn-cancel" onClick={onCancel}>Cancel</button>
-          <button className="naming-btn naming-btn-ok" disabled={!valid} onClick={handleConfirm}>Create</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { fuzzyMatch, sessionMatchesQuery, splitSessions } from "./session-filters.js";
 
 // ─── Editable session label ──────────────────────────────────────
 
@@ -153,18 +96,16 @@ function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, 
       onClick={() => onSwitch(s.id)}
       title={isPoppedOut ? "Focus pop-out window" : undefined}
     >
-      <span className="dir-tree-toggle-spacer" />
-      {pinned ? (
-        <span
-          className="session-pin"
-          title="Unpin"
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(s.id); }}
-        >{"\u2605"}</span>
-      ) : (
-        <span className={`session-dot state-${s.state}`} />
-      )}
+      <span className={`session-dot state-${s.state}`} />
       <EditableSessionLabel name={s.name} onRename={(name) => onRename(s.id, name)} />
       {timeLabel && <span className="session-time">{timeLabel}</span>}
+      <span
+        className={`session-fav ${s.favorite ? "starred" : ""}`}
+        title={s.favorite ? "Remove from favorites" : "Add to favorites"}
+        onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(s.id); }}
+      >
+        {s.favorite ? "\u2605" : "\u2606"}
+      </span>
       {isPoppedOut && <span className="popout-indicator" title="Popped out">&#8599;</span>}
       {live ? (
         <span className="session-kill" title="Terminate session" onClick={(e) => { e.stopPropagation(); onKill(s.id); }}>&#9632;</span>
@@ -190,12 +131,13 @@ type DirTreeNodeViewProps = {
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onCreate: (cwd: string) => void;
+  onToggleFavorite: (id: string) => void;
   live: boolean;
 };
 
 function DirTreeNodeView({
   node, depth, activeId, poppedOutIds, expandedPaths, isSearching,
-  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, live,
+  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live,
 }: DirTreeNodeViewProps) {
   const defaultOpen = true;
   const userToggled = expandedPaths.has(node.fullPath);
@@ -233,6 +175,7 @@ function DirTreeNodeView({
               onKill={onKill}
               onDelete={onDelete}
               onRename={onRename}
+              onToggleFavorite={onToggleFavorite}
             />
           ))}
           {childNodes.map(child => (
@@ -250,6 +193,7 @@ function DirTreeNodeView({
               onDelete={onDelete}
               onRename={onRename}
               onCreate={onCreate}
+              onToggleFavorite={onToggleFavorite}
               live={live}
             />
           ))}
@@ -273,12 +217,13 @@ type DirTreeListProps = {
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onCreate: (cwd: string) => void;
+  onToggleFavorite: (id: string) => void;
   live: boolean;
 };
 
 function DirTreeList({
   tree, activeId, poppedOutIds, expandedPaths, isSearching,
-  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, live,
+  onToggle, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live,
 }: DirTreeListProps) {
   if (tree.roots.length === 0 && tree.rootSessions.length === 0 && tree.unknown.length === 0) {
     return (
@@ -310,6 +255,7 @@ function DirTreeList({
           onDelete={onDelete}
           onRename={onRename}
           onCreate={onCreate}
+          onToggleFavorite={onToggleFavorite}
           live={live}
         />
       ))}
@@ -325,6 +271,7 @@ function DirTreeList({
           onKill={onKill}
           onDelete={onDelete}
           onRename={onRename}
+          onToggleFavorite={onToggleFavorite}
         />
       ))}
       {tree.unknown.length > 0 && (
@@ -350,6 +297,7 @@ function DirTreeList({
               onKill={onKill}
               onDelete={onDelete}
               onRename={onRename}
+              onToggleFavorite={onToggleFavorite}
             />
           ))}
         </div>
@@ -364,6 +312,7 @@ type SidebarProps = {
   sessions: SessionData[];
   activeId: string | null;
   poppedOutIds?: Set<string>;
+  search: string;
   onSwitch: (id: string) => void;
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
@@ -374,13 +323,9 @@ type SidebarProps = {
 
 const HISTORY_LIMIT = 20;
 
-export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds, search, onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite }: SidebarProps) {
   const [perm, setPerm] = useState<PermissionMode>("default");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [defaultFolder, setDefaultFolder] = useState("");
-  const [namingOpen, setNamingOpen] = useState(false);
-  const [splitOpen, setSplitOpen] = useState(false);
-  const splitRef = useRef<HTMLDivElement>(null);
 
   // Load saved defaults from config
   useEffect(() => {
@@ -390,16 +335,6 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
     });
   }, []);
 
-  // Close split dropdown on outside click
-  useEffect(() => {
-    if (!splitOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (splitRef.current && !splitRef.current.contains(e.target as Node)) setSplitOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [splitOpen]);
-  const [search, setSearch] = useState("");
   const [historyMode, setHistoryMode] = useState<"flat" | "tree">("flat");
   const [liveExpanded, setLiveExpanded] = useState<Set<string>>(new Set());
   const [historyExpanded, setHistoryExpanded] = useState<Set<string>>(new Set());
@@ -417,8 +352,8 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
     getPosition: (e) => e.clientX,
   });
 
-  const isSearching = search.trim().length > 0;
-  const q = search.trim();
+  const isSearching = search.length > 0;
+  const q = search;
 
   // Split into live / pinned / history via pure module
   const pinnedIds = useMemo(() => new Set(sessions.filter(s => s.favorite).map(s => s.id)), [sessions]);
@@ -444,40 +379,39 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
 
   const handleNewClick = useCallback(() => {
     if (defaultFolder) {
-      setNamingOpen(true);
+      onCreate(perm, defaultFolder);
     } else {
       handleBrowse();
     }
-  }, [defaultFolder, handleBrowse]);
-
-  const handleNamingConfirm = useCallback(async (name: string, folderPath: string) => {
-    setNamingOpen(false);
-    try {
-      const sanitized = sanitizeFolderName(name);
-      const createdPath = await api().createProjectFolder({ parentDir: defaultFolder, folderName: sanitized });
-      onCreate(perm, createdPath, name.trim());
-    } catch (err) {
-      console.error("Failed to create project folder:", err);
-    }
-  }, [defaultFolder, perm, onCreate]);
+  }, [defaultFolder, perm, onCreate, handleBrowse]);
 
   return (
     <>
       <div id="sidebar" style={{ width }}>
-        <div id="sidebar-search">
-          <input
-            className="sidebar-search-input"
-            type="text"
-            placeholder="Search sessions..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            spellCheck={false}
-          />
-          {search && (
-            <button className="sidebar-search-clear" onClick={() => setSearch("")}>
-              &times;
+        <div id="sidebar-header">
+          <span className="sidebar-header-label">Sessions</span>
+          <div className="sidebar-header-actions">
+            <button
+              className="sidebar-new-btn"
+              onClick={handleNewClick}
+              title={defaultFolder ? `New session in ${defaultFolder}` : "New session (browse folder)"}
+            >
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13 2.5l.5.5L7 9.5 5.5 11l.5-2.5L12.5 2l.5.5z" />
+                <path d="M2 13.5h12" />
+              </svg>
             </button>
-          )}
+            <button
+              className="sidebar-browse-btn"
+              onClick={handleBrowse}
+              title="New session in folder..."
+            >
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 4v9h12V6H7.5L6 4H2z" />
+                <path d="M10 8v4" /><path d="M8 10h4" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div id="sidebar-panels" ref={panelsRef}>
           <div className="sidebar-panel" style={{ flex: `0 0 ${topRatio * 100}%` }}>
@@ -495,6 +429,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                 onDelete={onDelete}
                 onRename={onRename}
                 onCreate={handleCreateInDir}
+                onToggleFavorite={onToggleFavorite}
                 live={true}
               />
             </div>
@@ -553,6 +488,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                   onDelete={onDelete}
                   onRename={onRename}
                   onCreate={handleCreateInDir}
+                  onToggleFavorite={onToggleFavorite}
                   live={false}
                 />
               ) : (
@@ -571,44 +507,15 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                     onKill={onKill}
                     onDelete={onDelete}
                     onRename={onRename}
+                    onToggleFavorite={onToggleFavorite}
                   />
                 ))
               )}
             </div>
           </div>
         </div>
-        <div id="sidebar-actions">
-          <PolicyPicker items={PERM_ITEMS} value={perm} onChange={setPerm} />
-          <div className="split-button" ref={splitRef}>
-            <button className="split-main" onClick={handleNewClick} title={defaultFolder ? "Create named session" : "Browse for project folder"}>+ New</button>
-            <button className="split-arrow" onClick={() => setSplitOpen((v) => !v)} title="More options">{"\u25BE"}</button>
-            {splitOpen && (
-              <div className="split-dropdown">
-                <button onClick={() => { setSplitOpen(false); handleBrowse(); }}>Browse folder...</button>
-              </div>
-            )}
-          </div>
-        </div>
-        <button id="settings-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
-          &#9881; Settings
-        </button>
         <div className="sidebar-resize-handle" onMouseDown={onResizeMouseDown} />
       </div>
-      <SettingsModal open={settingsOpen} onClose={() => {
-        setSettingsOpen(false);
-        // Re-sync defaults in case user changed them
-        api().getConfig().then((cfg: any) => {
-          if (cfg.defaultPermissionMode) setPerm(cfg.defaultPermissionMode);
-          setDefaultFolder(cfg.defaultProjectsFolder ?? "");
-        });
-      }} />
-      {namingOpen && defaultFolder && (
-        <NamingModal
-          defaultFolder={defaultFolder}
-          onConfirm={handleNamingConfirm}
-          onCancel={() => setNamingOpen(false)}
-        />
-      )}
     </>
   );
 });

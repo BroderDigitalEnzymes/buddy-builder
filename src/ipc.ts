@@ -195,6 +195,7 @@ export type InvokeContract = {
   popOutSession:     { in: { sessionId: string }; out: void };
   popInSession:      { in: { sessionId: string }; out: void };
   focusPopout:       { in: { sessionId: string }; out: boolean };
+  setAlwaysOnTop:    { in: { alwaysOnTop: boolean }; out: void };
   searchSessions:    { in: { query: string; limit?: number }; out: SearchResultItem[] };
   getIndexStatus:    { in: undefined; out: IndexStatusInfo };
   triggerReindex:    { in: undefined; out: void };
@@ -264,7 +265,7 @@ export const INVOKE_CHANNELS = [
   "renameSession", "setFavorite", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
   "getConfig", "setConfig", "pickFolder", "createProjectFolder", "takeScreenshot",
   "getSessionMeta", "openInfoWindow",
-  "popOutSession", "popInSession", "focusPopout",
+  "popOutSession", "popInSession", "focusPopout", "setAlwaysOnTop",
   "searchSessions", "getIndexStatus", "triggerReindex",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];

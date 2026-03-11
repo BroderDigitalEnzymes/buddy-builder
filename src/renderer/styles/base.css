@@ -99,6 +99,7 @@ body {
   -webkit-app-region: drag;
   flex-shrink: 0;
   user-select: none;
+  position: relative;
 }
 
 #title-bar-left {
@@ -120,6 +121,63 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* ─── Title bar search (Slack-style centered) ─── */
+
+#title-bar-search {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  width: min(440px, 40%);
+  -webkit-app-region: no-drag;
+}
+
+.title-search-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.title-search-input {
+  width: 100%;
+  padding: 3px 26px 3px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.title-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.title-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.title-search-clear {
+  position: absolute;
+  right: 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.title-search-clear:hover {
+  color: var(--text);
+}
+
 /* ═══ App layout (sidebar + main) ═════════════════════════════ */
 
 #app-layout {
@@ -129,6 +187,14 @@ body {
 }
 
 /* ═══ Main area ══════════════════════════════════════════════ */
+
+#main-area-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
 
 #main-area {
   flex: 1;

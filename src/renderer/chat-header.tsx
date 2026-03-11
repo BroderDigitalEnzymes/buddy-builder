@@ -116,9 +116,11 @@ type ChatHeaderProps = {
   onBack?: () => void;
   onPopOut?: (id: string) => void;
   onPopIn?: () => void;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
 };
 
-export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onOpenTerminal, onBack, onPopOut, onPopIn }: ChatHeaderProps) {
+export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onToggleFavorite, onOpenTerminal, onBack, onPopOut, onPopIn, isPinned, onTogglePin }: ChatHeaderProps) {
   if (!session) {
     return <div id="chat-header" />;
   }
@@ -184,6 +186,18 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M7 9l-5-5" /><path d="M2 4v5h5" /><path d="M14 2v12H2" />
+            </svg>
+          </button>
+        )}
+        {onTogglePin && (
+          <button
+            className={`chat-header-icon-btn pin-btn ${isPinned ? "pinned" : ""}`}
+            title={isPinned ? "Unpin from top" : "Always on top"}
+            onClick={onTogglePin}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9.5 2.5l4 4-3 3-1.5-.5L6.5 11.5 4.5 13.5l-2-2 2-2L7 7 6.5 5.5z" />
+              <path d="M9.5 2.5l4 4" />
             </svg>
           </button>
         )}

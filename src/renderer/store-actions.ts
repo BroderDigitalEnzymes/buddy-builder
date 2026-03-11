@@ -21,7 +21,12 @@ function reportActiveId(): void {
 // ─── Actions ─────────────────────────────────────────────────────
 
 export function navigateHome(): void {
-  state.currentView = "home";
+  state.sidebarView = "sessions";
+  emit();
+}
+
+export function showSettings(): void {
+  state.sidebarView = "settings";
   emit();
 }
 
@@ -37,7 +42,7 @@ async function ensureEntries(id: string): Promise<void> {
 
 export async function openInApp(id: string): Promise<void> {
   state.activeId = id;
-  state.currentView = "chat";
+  state.sidebarView = "sessions";
   reportActiveId();
   await ensureEntries(id);
   emit();
@@ -154,7 +159,7 @@ export async function createSession(
     state.activeId = id;
     reportActiveId();
     if (opts.openInApp !== false) {
-      state.currentView = "chat";
+      state.sidebarView = "sessions";
     }
     emit();
     return id;
@@ -366,9 +371,9 @@ function handleEvent(event: SessionEvent): void {
 
 export async function popOutSession(id: string): Promise<void> {
   await api().popOutSession({ sessionId: id });
-  // Navigate main window back to home after popping out
+  // Navigate main window back to sessions after popping out
   if (!IS_POPOUT) {
-    state.currentView = "home";
+    state.sidebarView = "sessions";
     emit();
   }
 }

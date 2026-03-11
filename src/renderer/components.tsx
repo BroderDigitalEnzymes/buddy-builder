@@ -3,9 +3,11 @@ import { WindowControls } from "./window-controls.js";
 
 // ─── Title bar (drag region + window controls) ───────────────────
 
-export const TitleBar = memo(function TitleBar({ compact, sessionName }: {
+export const TitleBar = memo(function TitleBar({ compact, sessionName, search, onSearchChange }: {
   compact?: boolean;
   sessionName?: string;
+  search?: string;
+  onSearchChange?: (value: string) => void;
 }) {
   return (
     <div id="title-bar">
@@ -13,6 +15,26 @@ export const TitleBar = memo(function TitleBar({ compact, sessionName }: {
         <img id="title-bar-icon" src="../assets/icon-32.png" alt="" />
         <span id="title-bar-label">{compact ? sessionName ?? "Session" : "Buddy Builder"}</span>
       </div>
+      {!compact && onSearchChange != null && (
+        <div id="title-bar-search">
+          <svg className="title-search-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
+          </svg>
+          <input
+            className="title-search-input"
+            type="text"
+            placeholder="Search sessions..."
+            value={search ?? ""}
+            onChange={(e) => onSearchChange(e.target.value)}
+            spellCheck={false}
+          />
+          {search && (
+            <button className="title-search-clear" onClick={() => onSearchChange("")}>
+              &times;
+            </button>
+          )}
+        </div>
+      )}
       <WindowControls />
     </div>
   );

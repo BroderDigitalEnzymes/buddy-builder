@@ -49,12 +49,12 @@ export type SessionData = {
 
 // ─── Store ───────────────────────────────────────────────────────
 
-export type ViewMode = "home" | "chat";
+export type ViewMode = "sessions" | "settings";
 
 export type StoreState = {
   sessions: Map<string, SessionData>;
   activeId: string | null;
-  currentView: ViewMode;
+  sidebarView: ViewMode;
   poppedOutIds: Set<string>;
   counter: number;
   version: number;
@@ -66,7 +66,7 @@ export type StoreState = {
 export const state: StoreState = {
   sessions: new Map(),
   activeId: null,
-  currentView: "home",
+  sidebarView: "sessions",
   poppedOutIds: new Set(),
   counter: 0,
   version: 0,

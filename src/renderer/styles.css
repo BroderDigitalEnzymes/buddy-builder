@@ -2,6 +2,9 @@
 @import url("styles/base.css");
 @import url("styles/home.css");
 @import url("styles/sidebar.css");
+@import url("styles/icon-rail.css");
+@import url("styles/settings-view.css");
+@import url("styles/welcome.css");
 @import url("styles/chat.css");
 @import url("styles/tools.css");
 @import url("styles/input-bar.css");

@@ -306,6 +306,7 @@ function setupIpc(mgr: SessionManager): void {
       if (win && !win.isDestroyed()) { win.focus(); return true; }
       return false;
     },
+    setAlwaysOnTop: () => { /* handled separately below with raw ipcMain.handle */ },
     searchSessions: ({ query, limit }) => {
       if (!searchIndex || !manager) return [];
       const raw = searchIndex.search(query, limit);
@@ -354,7 +355,7 @@ function setupIpc(mgr: SessionManager): void {
 
   // Override window controls to use event.sender (not getFocusedWindow)
   // so popout close doesn't kill the main window.
-  for (const ch of ["winClose", "winMinimize", "winMaximize"] as const) {
+  for (const ch of ["winClose", "winMinimize", "winMaximize", "setAlwaysOnTop"] as const) {
     ipcMain.removeHandler(ch);
   }
   ipcMain.handle("winMinimize", (event) => {
@@ -384,6 +385,10 @@ function setupIpc(mgr: SessionManager): void {
         dlog(`[ipc:winClose] destroy() returned for id=${w.id}`);
       });
     }
+  });
+  ipcMain.handle("setAlwaysOnTop", (event, arg: { alwaysOnTop: boolean }) => {
+    const w = BrowserWindow.fromWebContents(event.sender);
+    if (w && !w.isDestroyed()) w.setAlwaysOnTop(arg.alwaysOnTop);
   });
 }
 

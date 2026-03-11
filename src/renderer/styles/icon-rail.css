@@ -1,0 +1,53 @@
+/* ═══ Icon Rail ═══════════════════════════════════════════════ */
+
+#icon-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 56px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 8px 0;
+  gap: 2px;
+}
+
+.icon-rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 48px;
+  padding: 6px 0 4px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.icon-rail-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.icon-rail-btn.active {
+  color: var(--text);
+}
+
+.icon-rail-label {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.icon-rail-separator {
+  width: 24px;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+}

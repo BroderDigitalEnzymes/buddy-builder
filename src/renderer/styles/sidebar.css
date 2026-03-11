@@ -9,6 +9,66 @@
   position: relative;
 }
 
+/* ─── Sidebar header (label + new button) ─── */
+
+#sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 4px 14px;
+  flex-shrink: 0;
+}
+
+.sidebar-header-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: -0.01em;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.sidebar-new-btn,
+.sidebar-browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.1s;
+}
+
+.sidebar-new-btn {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sidebar-browse-btn {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.sidebar-new-btn:hover,
+.sidebar-browse-btn:hover {
+  filter: brightness(1.15);
+}
+
+.sidebar-browse-btn:hover {
+  color: var(--text-primary);
+}
+
+.sidebar-new-btn:active,
+.sidebar-browse-btn:active {
+  transform: scale(0.93);
+}
+
 /* ─── Sidebar search ─── */
 
 #sidebar-search {
@@ -226,16 +286,32 @@
   white-space: nowrap;
 }
 
-/* ─── Pinned sessions ─── */
+/* ─── Favorite star ─── */
 
-.session-pin {
-  font-size: 11px;
-  color: #f5c518;
+.session-fav {
+  font-size: 12px;
+  color: var(--text-muted);
   flex-shrink: 0;
   cursor: pointer;
-  transition: transform 0.1s;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, transform 0.1s;
 }
-.session-pin:hover { transform: scale(1.3); }
+
+.session-item:hover .session-fav {
+  opacity: 0.5;
+}
+
+.session-fav:hover {
+  opacity: 1 !important;
+  transform: scale(1.2);
+}
+
+.session-fav.starred {
+  color: #f5c518;
+  opacity: 1;
+}
+
+/* ─── Pinned sessions ─── */
 
 .session-pinned {
   background: rgba(245, 197, 24, 0.04);
