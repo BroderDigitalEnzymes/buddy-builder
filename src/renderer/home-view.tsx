@@ -36,11 +36,6 @@ function SessionCard({ session, poppedOut }: {
   const inputRef = useRef<HTMLInputElement>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleClick = useCallback(() => {
-    if (poppedOut) { focusPopout(session.id); return; }
-    openInApp(session.id);
-  }, [session.id, poppedOut]);
-
   const startRename = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setEditValue(session.name);
@@ -64,7 +59,6 @@ function SessionCard({ session, poppedOut }: {
   return (
     <div
       className={`hcard ${isDead ? "hcard-dead" : ""} ${isBusy ? "hcard-busy" : ""} ${poppedOut ? "hcard-popout" : ""}`}
-      onClick={handleClick}
     >
       <div className="hcard-top">
         <button

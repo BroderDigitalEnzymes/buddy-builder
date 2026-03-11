@@ -4,6 +4,7 @@ import type { ChatEntry } from "../ipc.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
 import { getSender, formatTokens, type Sender } from "./utils.js";
 import { formatTime } from "./time.js";
+import { isHiddenEntry } from "./message-filters.js";
 
 // ─── Rate Limit Banner ──────────────────────────────────────────
 
@@ -273,7 +274,9 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
     }
   }, [entries, entries.length > 0 ? entries[entries.length - 1] : null, isBusy]);
 
-  if (entries.length === 0) {
+  const visible = entries.filter(e => !isHiddenEntry(e));
+
+  if (visible.length === 0) {
     return (
       <div id="chat" className="chat-area chat-empty" ref={containerRef} />
     );
@@ -282,8 +285,8 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
   return (
     <div id="chat" className="chat-area" ref={containerRef} onScroll={onScroll}>
       <div className="messages">
-        {entries.map((entry, i) => {
-          const prevEntry = entries[i - 1];
+        {visible.map((entry, i) => {
+          const prevEntry = visible[i - 1];
           const sender = getSender(entry.kind);
           const prevSender = prevEntry ? getSender(prevEntry.kind) : null;
 
@@ -299,12 +302,12 @@ export function MessageList({ entries, isBusy }: MessageListProps) {
               key={i}
               entry={entry}
               isGroupStart={isGroupStart}
-              prevKind={entries[i - 1]?.kind}
-              nextKind={entries[i + 1]?.kind}
+              prevKind={visible[i - 1]?.kind}
+              nextKind={visible[i + 1]?.kind}
             />
           );
         })}
-        {isBusy && !entries.some(e => e.kind === "text" && e.streaming) && (
+        {isBusy && !visible.some(e => e.kind === "text" && e.streaming) && (
           <div className="msg-row msg-row-first thinking-row">
             <div className="msg-avatar msg-avatar-claude msg-avatar-thinking">
               {SENDER_ICONS.claude}

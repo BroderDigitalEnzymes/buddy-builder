@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Notification, nativeImage } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Notification, nativeImage, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { execSync } from "child_process";
@@ -11,6 +11,19 @@ import { createSearchIndex, type SearchIndex } from "./search-index.js";
 import { startBackgroundIndex, type BackgroundIndexHandle } from "./search-worker.js";
 import { createTray, destroyTray } from "./tray.js";
 import { autoUpdater } from "electron-updater";
+import { dlog } from "./debug-log.js";
+
+// ─── Crash catchers ─────────────────────────────────────────────
+
+process.on("uncaughtException", (err) => {
+  dlog("[CRASH] uncaughtException:", err.stack ?? err.message);
+});
+process.on("unhandledRejection", (reason) => {
+  dlog("[CRASH] unhandledRejection:", String(reason));
+});
+process.on("exit", (code) => {
+  dlog(`[CRASH] process.exit code=${code}`);
+});
 
 // ─── App identity (must be set before 'ready') ──────────────────
 
@@ -69,7 +82,7 @@ function createWindowBase(opts: {
   minHeight?: number;
   title?: string;
 }): BrowserWindow {
-  return new BrowserWindow({
+  const win = new BrowserWindow({
     width: opts.width,
     height: opts.height,
     minWidth: opts.minWidth,
@@ -84,6 +97,36 @@ function createWindowBase(opts: {
       nodeIntegration: false,
     },
   });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  return win;
+}
+
+// ─── Quit guard ─────────────────────────────────────────────────
+// The main window is never destroyed — it hides on close so that
+// closing a popout can't accidentally trigger window-all-closed.
+// After any window hides or closes we call this to decide whether
+// the app should actually quit.
+
+function quitIfDone(caller: string): void {
+  const all = BrowserWindow.getAllWindows();
+  const visible = all.filter((w) => !w.isDestroyed() && w.isVisible());
+  const tray = loadConfig().minimizeToTray;
+  dlog(`[quit-guard] caller=${caller} allWindows=${all.length} visible=${visible.length} tray=${tray} isQuitting=${isQuitting}`);
+  for (const w of all) {
+    dlog(`  window id=${w.id} destroyed=${w.isDestroyed()} visible=${!w.isDestroyed() && w.isVisible()} title="${!w.isDestroyed() ? w.getTitle() : "?"}" isMain=${w === mainWindow}`);
+  }
+  if (tray) { dlog("[quit-guard] tray mode — staying alive"); return; }
+  if (visible.length === 0) {
+    dlog("[quit-guard] NO visible windows — calling app.quit()");
+    app.quit();
+  } else {
+    dlog("[quit-guard] visible windows remain — staying alive");
+  }
 }
 
 // ─── Main window ─────────────────────────────────────────────────
@@ -99,17 +142,17 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   register({ kind: "main", win: mainWindow });
 
-  // When "minimize to tray" is on, HIDE the window instead of destroying it.
-  // This keeps the BrowserWindow alive (no window-all-closed, no GC issues)
-  // and makes re-showing instant.
   mainWindow.on("close", (e) => {
-    if (!isQuitting && loadConfig().minimizeToTray) {
-      e.preventDefault();
-      mainWindow!.hide();
-    }
+    dlog(`[main] CLOSE event — isQuitting=${isQuitting}`);
+    if (isQuitting) { dlog("[main] isQuitting=true, allowing destroy"); return; }
+    e.preventDefault();
+    mainWindow!.hide();
+    dlog("[main] hidden instead of destroyed");
+    quitIfDone("main-close");
   });
 
   mainWindow.on("closed", () => {
+    dlog("[main] CLOSED event — window destroyed!");
     unregister(mainWindow!);
     mainWindow = null;
   });
@@ -137,13 +180,28 @@ function createPopoutWindow(sessionId: string): void {
 
   register({ kind: "popout", win, sessionId });
   dispatch({ kind: "popoutChanged", sessionId, poppedOut: true });
+  dlog(`[popout] created id=${win.id} session=${sessionId}`);
+
+  win.webContents.on("render-process-gone", (_e, details) => {
+    dlog(`[popout] RENDER-PROCESS-GONE id=${win.id} reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+  win.webContents.on("destroyed", () => {
+    dlog(`[popout] WEBCONTENTS-DESTROYED id=${win.id}`);
+  });
+  win.on("unresponsive", () => {
+    dlog(`[popout] UNRESPONSIVE id=${win.id}`);
+  });
+  win.on("close", () => {
+    dlog(`[popout] CLOSE event id=${win.id} session=${sessionId}`);
+  });
 
   win.on("closed", () => {
+    dlog(`[popout] CLOSED event id=${win.id} session=${sessionId}`);
     unregister(win);
-    // Only notify main window if it's still alive (not during app shutdown)
     if (mainWindow && !mainWindow.isDestroyed()) {
       dispatch({ kind: "popoutChanged", sessionId, poppedOut: false });
     }
+    quitIfDone("popout-closed");
   });
 }
 
@@ -309,7 +367,23 @@ function setupIpc(mgr: SessionManager): void {
   });
   ipcMain.handle("winClose", (event) => {
     const w = BrowserWindow.fromWebContents(event.sender);
-    if (w) setImmediate(() => w.close());
+    const isMain = w === mainWindow;
+    dlog(`[ipc:winClose] id=${w?.id ?? "null"} isMain=${isMain}`);
+    if (!w) return;
+
+    if (isMain) {
+      // Main window: go through close() so the hide-on-close handler runs
+      dlog("[ipc:winClose] main — calling close()");
+      setImmediate(() => w.close());
+    } else {
+      // Popout: use destroy() to avoid native crash on Windows
+      dlog(`[ipc:winClose] popout — calling destroy() on id=${w.id}`);
+      setImmediate(() => {
+        dlog(`[ipc:winClose] inside setImmediate, about to destroy id=${w.id}`);
+        w.destroy();
+        dlog(`[ipc:winClose] destroy() returned for id=${w.id}`);
+      });
+    }
   });
 }
 
@@ -464,14 +538,12 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  // When minimizeToTray is on, the main window hides instead of closing,
-  // so this only fires for popout windows or when the setting is off.
-  if (!loadConfig().minimizeToTray) {
-    app.quit();
-  }
+  dlog("[app] WINDOW-ALL-CLOSED event fired");
+  quitIfDone("window-all-closed");
 });
 
 app.on("before-quit", () => {
+  dlog("[app] BEFORE-QUIT event");
   isQuitting = true;
   bgIndexHandle?.cancel();
   searchIndex?.close();
