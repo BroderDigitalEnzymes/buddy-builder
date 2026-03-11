@@ -316,7 +316,12 @@ function buildHandlers(mgr: SessionManager): Handlers {
     },
     focusPopout:    ({ sessionId }) => {
       const win = findPopout(sessionId);
-      if (win && !win.isDestroyed()) { win.focus(); return true; }
+      if (win && !win.isDestroyed()) {
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        return true;
+      }
       return false;
     },
     setAlwaysOnTop: () => { /* handled separately below with raw ipcMain.handle */ },
