@@ -15,47 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate release.json
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Fetch latest release using gh cli (works for private repos with GITHUB_TOKEN)
-          RELEASE_JSON=$(gh release view --json tagName,assets --repo ${{ github.repository }} 2>/dev/null || echo "")
-
-          if [ -z "$RELEASE_JSON" ]; then
-            echo '{"version":"unreleased","assets":[]}' > docs/release.json
-            exit 0
-          fi
-
-          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tagName | ltrimstr("v")')
-
-          # Extract asset URLs and sizes
-          DMG_URL=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".dmg"))][0].url // empty')
-          DMG_SIZE=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".dmg"))][0].size // empty')
-          EXE_URL=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select((.name | endswith(".exe")) and (.name | endswith(".blockmap") | not))][0].url // empty')
-          EXE_SIZE=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select((.name | endswith(".exe")) and (.name | endswith(".blockmap") | not))][0].size // empty')
-          APPIMAGE_URL=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".AppImage"))][0].url // empty')
-          APPIMAGE_SIZE=$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".AppImage"))][0].size // empty')
-
-          format_size() {
-            local bytes=$1
-            if [ -z "$bytes" ]; then echo ""; return; fi
-            if [ "$bytes" -gt 1000000000 ] 2>/dev/null; then echo "$(echo "scale=1; $bytes/1000000000" | bc) GB"
-            elif [ "$bytes" -gt 1000000 ] 2>/dev/null; then echo "$(echo "scale=1; $bytes/1000000" | bc) MB"
-            else echo "$(($bytes/1000)) KB"; fi
-          }
-
-          cat > docs/release.json << ENDJSON
-          {
-            "version": "$VERSION",
-            "assets": [
-              {"icon": "\ud83c\udf4e", "title": "macOS", "label": ".dmg", "url": $([ -n "$DMG_URL" ] && echo "\"$DMG_URL\"" || echo "null"), "size": "$(format_size "$DMG_SIZE")"},
-              {"icon": "\ud83e\ude9f", "title": "Windows", "label": ".exe", "url": $([ -n "$EXE_URL" ] && echo "\"$EXE_URL\"" || echo "null"), "size": "$(format_size "$EXE_SIZE")"},
-              {"icon": "\ud83d\udc27", "title": "Linux", "label": ".AppImage", "url": $([ -n "$APPIMAGE_URL" ] && echo "\"$APPIMAGE_URL\"" || echo "null"), "size": "$(format_size "$APPIMAGE_SIZE")"}
-            ]
-          }
-          ENDJSON
-
       - name: Create Pages project if needed
         uses: cloudflare/wrangler-action@v3
         with:

@@ -1,21 +1,26 @@
 {
   "name": "buddy-builder",
   "version": "1.4.0",
-  "description": "Programmatic wrapper around Claude Code CLI",
+  "description": "A desktop GUI for Claude Code. Manage multiple sessions, search conversations, and work with AI — visually.",
   "main": "dist/main.cjs",
+  "bin": {
+    "buddy-builder": "./bin/buddy-builder.cjs"
+  },
+  "files": [
+    "dist/**/*",
+    "assets/**/*",
+    "bin/**/*"
+  ],
   "scripts": {
     "cli": "npx tsx src/cli.ts",
     "build": "node scripts/build.js",
     "start": "npm run build && npx electron .",
     "dev": "node scripts/build.js --watch & npx electronmon .",
-    "dist": "npm run build && npx electron-builder --mac --win --linux",
-    "dist:mac": "npm run build && npx electron-builder --mac",
-    "dist:win": "npm run build && npx electron-builder --win",
-    "dist:linux": "npm run build && npx electron-builder --linux",
+    "prepublishOnly": "npm run build",
     "probe": "npx tsx src/probe.ts",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
+  "keywords": ["claude", "claude-code", "electron", "gui", "ai"],
   "author": "",
   "license": "ISC",
   "type": "module",
@@ -24,7 +29,6 @@
     "@types/node": "^25.3.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "electron": "^40.6.1",
     "electron-builder": "^26.8.1",
     "electronmon": "^2.0.4",
     "esbuild": "^0.27.3",
@@ -35,43 +39,8 @@
   "electronmon": {
     "logLevel": "verbose"
   },
-  "build": {
-    "appId": "com.buddy-builder.app",
-    "productName": "Buddy Builder",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*"
-    ],
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "category": "public.app-category.developer-tools",
-      "icon": "assets/icon.icns"
-    },
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "assets/icon.ico"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "category": "Development",
-      "icon": "assets/icon.png"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "eran-broder",
-      "repo": "buddy-builder"
-    }
-  },
   "dependencies": {
+    "electron": "^40.6.1",
     "electron-updater": "^6.8.3",
     "marked": "^17.0.3",
     "react": "^19.2.4",

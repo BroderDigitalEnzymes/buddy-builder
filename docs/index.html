@@ -42,101 +42,65 @@
       line-height: 1.6;
     }
 
-    .version {
-      display: inline-block;
-      margin-top: 16px;
-      padding: 4px 12px;
-      background: #1c2128;
-      border: 1px solid #30363d;
-      border-radius: 20px;
-      font-size: 13px;
-      color: #8b949e;
-    }
-
-    .downloads {
-      display: flex;
-      gap: 20px;
-      padding: 20px;
-      max-width: 900px;
+    .install {
+      max-width: 600px;
       width: 100%;
-      justify-content: center;
-      flex-wrap: wrap;
+      margin: 40px auto 0;
+      padding: 0 20px;
     }
 
-    .card {
+    .install-step {
       background: #161b22;
       border: 1px solid #30363d;
       border-radius: 12px;
-      padding: 32px 28px;
-      width: 260px;
-      text-align: center;
-      transition: border-color 0.2s;
-    }
-
-    .card:hover {
-      border-color: #58a6ff;
-    }
-
-    .card .icon {
-      font-size: 40px;
+      padding: 24px 28px;
       margin-bottom: 16px;
     }
 
-    .card h3 {
-      font-size: 18px;
-      margin-bottom: 6px;
-    }
-
-    .card .file-info {
-      font-size: 12px;
+    .install-step h3 {
+      font-size: 14px;
       color: #8b949e;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
+      font-weight: 500;
     }
 
-    .card a {
-      display: inline-block;
-      padding: 10px 28px;
-      background: #238636;
-      color: #fff;
-      text-decoration: none;
+    .install-cmd {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 15px;
+      color: #e6edf3;
+    }
+
+    .install-cmd code {
+      flex: 1;
+    }
+
+    .install-cmd .copy-btn {
+      background: none;
+      border: 1px solid #30363d;
       border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
-      transition: background 0.2s;
-    }
-
-    .card a:hover {
-      background: #2ea043;
-    }
-
-    .card a.disabled {
-      background: #21262d;
-      color: #484f58;
-      pointer-events: none;
-    }
-
-    .footer {
-      margin-top: 60px;
-      padding: 20px;
-      text-align: center;
-      color: #484f58;
-      font-size: 13px;
-    }
-
-    .footer a {
-      color: #58a6ff;
-      text-decoration: none;
-    }
-
-    .loading {
       color: #8b949e;
-      padding: 40px;
-      font-size: 14px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .install-cmd .copy-btn:hover {
+      color: #e6edf3;
+      border-color: #58a6ff;
     }
 
     .prereq {
       max-width: 600px;
-      margin: 20px auto 0;
+      margin: 24px auto 0;
       padding: 16px 20px;
       background: #1c2128;
       border: 1px solid #30363d;
@@ -155,6 +119,14 @@
       color: #58a6ff;
       text-decoration: none;
     }
+
+    .footer {
+      margin-top: 60px;
+      padding: 20px;
+      text-align: center;
+      color: #484f58;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -162,16 +134,28 @@
     <img src="icon-256.png" alt="Buddy Builder">
     <h1>Buddy Builder</h1>
     <p>A desktop GUI for Claude Code. Manage multiple sessions, search conversations, and work with AI — visually.</p>
-    <div class="version" id="version">Loading...</div>
+  </div>
+
+  <div class="install">
+    <div class="install-step">
+      <h3>Install</h3>
+      <div class="install-cmd">
+        <code>npm install -g buddy-builder</code>
+        <button class="copy-btn" onclick="copy(this, 'npm install -g buddy-builder')">Copy</button>
+      </div>
+    </div>
+    <div class="install-step">
+      <h3>Launch</h3>
+      <div class="install-cmd">
+        <code>buddy-builder</code>
+        <button class="copy-btn" onclick="copy(this, 'buddy-builder')">Copy</button>
+      </div>
+    </div>
   </div>
 
   <div class="prereq">
-    <strong>Prerequisite:</strong> Buddy Builder requires <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank">Claude Code CLI</a> to be installed.<br>
-    Install it with: <code>npm install -g @anthropic-ai/claude-code</code>
-  </div>
-
-  <div class="downloads" id="downloads">
-    <div class="loading">Fetching latest release...</div>
+    <strong>Prerequisites:</strong> Node.js and <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank">Claude Code CLI</a><br>
+    Works on macOS, Windows, and Linux.
   </div>
 
   <div class="footer">
@@ -179,32 +163,11 @@
   </div>
 
   <script>
-    async function loadRelease() {
-      try {
-        const res = await fetch("./release.json");
-        if (!res.ok) throw new Error("No release data");
-        const data = await res.json();
-
-        document.getElementById("version").textContent = `v${data.version}`;
-
-        const container = document.getElementById("downloads");
-        container.innerHTML = data.assets.map(c => `
-          <div class="card">
-            <div class="icon">${c.icon}</div>
-            <h3>${c.title}</h3>
-            <div class="file-info">${c.url ? c.size + " &middot; " + c.label : "Not available"}</div>
-            <a href="${c.url || "#"}" class="${c.url ? "" : "disabled"}">
-              Download
-            </a>
-          </div>
-        `).join("");
-      } catch (err) {
-        document.getElementById("downloads").innerHTML =
-          `<div class="loading">No release available yet.</div>`;
-      }
+    function copy(btn, text) {
+      navigator.clipboard.writeText(text);
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = "Copy"; }, 1500);
     }
-
-    loadRelease();
   </script>
 </body>
 </html>
