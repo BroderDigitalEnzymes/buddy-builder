@@ -3,6 +3,7 @@ dist/
 *.tsbuildinfo
 NUL
 *.png
+!docs/*.png
 fetch_time.py
 .idea/
 .DS_Store
