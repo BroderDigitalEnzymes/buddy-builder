@@ -1,12 +1,12 @@
 /**
  * CLI test for the search index backend.
- * Runs inside Electron so native modules (better-sqlite3) load correctly.
+ * Runs inside Electron.
  *
  * Usage:
  *   npm run build && npx electron scripts/test-search-runner.cjs
  *
  * Or build + run in one shot:
- *   npx esbuild scripts/test-search.ts --bundle --platform=node --format=cjs --outfile=scripts/test-search-runner.cjs --external:electron --external:better-sqlite3 && npx electron scripts/test-search-runner.cjs
+ *   npx esbuild scripts/test-search.ts --bundle --platform=node --format=cjs --outfile=scripts/test-search-runner.cjs --external:electron && npx electron scripts/test-search-runner.cjs
  */
 
 import { app } from "electron";
@@ -70,7 +70,7 @@ async function runTests(): Promise<void> {
   console.log(cyan("\n=== Test 2: createSearchIndex + indexing ===\n"));
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "buddy-search-test-"));
-  const testDbPath = path.join(tmpDir, "test-search.db");
+  const testDbPath = path.join(tmpDir, "test-search.json");
   console.log(dim(`  DB path: ${testDbPath}`));
 
   const index = createSearchIndex(testDbPath);
@@ -168,7 +168,7 @@ async function runTests(): Promise<void> {
 
   console.log(cyan("\n=== Test 6: background indexing (startBackgroundIndex) ===\n"));
 
-  const tmpDb2 = path.join(tmpDir, "test-bg.db");
+  const tmpDb2 = path.join(tmpDir, "test-bg.json");
   const bgIndex = createSearchIndex(tmpDb2);
 
   const bgSessions = toIndex.map((s) => ({

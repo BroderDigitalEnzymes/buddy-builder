@@ -1,9 +1,6 @@
 name: Deploy Download Page
 
 on:
-  push:
-    branches: [master]
-    paths: [docs/**, .github/workflows/deploy-site.yml]
   workflow_run:
     workflows: [Release]
     types: [completed]

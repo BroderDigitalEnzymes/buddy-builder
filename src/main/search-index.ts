@@ -1,6 +1,5 @@
-import Database from "better-sqlite3";
 import { join } from "path";
-import { statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { extractSearchableText, type SearchableChunk } from "./search-text-extractor.js";
 
 export type { SearchableChunk } from "./search-text-extractor.js";
@@ -31,220 +30,208 @@ export type SearchIndex = {
   close(): void;
 };
 
-export function createSearchIndex(customDbPath?: string): SearchIndex {
-  let dbPath: string;
-  if (customDbPath) {
-    dbPath = customDbPath;
+// ─── Tokenizer (simple porter-like word splitting) ──────────────
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 1);
+}
+
+// ─── In-memory search index with JSON persistence ───────────────
+
+type IndexedSession = {
+  transcriptPath: string;
+  fileSize: number;
+  fileMtime: number;
+  sessionName: string;
+  chunks: { text: string; contentType: string; tokens: string[] }[];
+};
+
+type PersistedData = {
+  sessions: Record<string, IndexedSession>;
+};
+
+export function createSearchIndex(customPath?: string): SearchIndex {
+  let indexPath: string;
+  if (customPath) {
+    indexPath = customPath;
   } else {
-    // Electron runtime — import app lazily
     const { app } = require("electron");
-    dbPath = join(app.getPath("userData"), "search-index.db");
+    indexPath = join(app.getPath("userData"), "search-index.json");
   }
-  const db = new Database(dbPath);
 
-  // Performance settings
-  db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
-
-  // Create schema
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS session_index (
-      session_id      TEXT PRIMARY KEY,
-      transcript_path TEXT NOT NULL,
-      file_size       INTEGER NOT NULL,
-      file_mtime      REAL NOT NULL,
-      indexed_at      INTEGER NOT NULL,
-      session_name    TEXT NOT NULL DEFAULT ''
-    );
-
-    CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-      session_id UNINDEXED,
-      content,
-      content_type,
-      tokenize = 'porter unicode61'
-    );
-
-    CREATE TABLE IF NOT EXISTS fts_session_map (
-      rowid       INTEGER PRIMARY KEY,
-      session_id  TEXT NOT NULL
-    );
-  `);
-
-  // Create index if not exists
+  // Load persisted index
+  const sessions = new Map<string, IndexedSession>();
   try {
-    db.exec(`CREATE INDEX idx_fts_session ON fts_session_map(session_id);`);
+    if (existsSync(indexPath)) {
+      const raw: PersistedData = JSON.parse(readFileSync(indexPath, "utf-8"));
+      for (const [id, data] of Object.entries(raw.sessions)) {
+        sessions.set(id, data);
+      }
+    }
   } catch {
-    // Index already exists
+    // Corrupted file — start fresh
   }
-
-  // Migration: add session_name column if missing
-  try {
-    db.exec(`ALTER TABLE session_index ADD COLUMN session_name TEXT NOT NULL DEFAULT ''`);
-  } catch {
-    // Column already exists
-  }
-
-  // Prepared statements
-  const stmtGetIndex = db.prepare(
-    `SELECT file_size, file_mtime, session_name FROM session_index WHERE session_id = ?`
-  );
-
-  const stmtUpsertIndex = db.prepare(
-    `INSERT OR REPLACE INTO session_index (session_id, transcript_path, file_size, file_mtime, indexed_at, session_name)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  );
-
-  const stmtDeleteIndex = db.prepare(
-    `DELETE FROM session_index WHERE session_id = ?`
-  );
-
-  const stmtDeleteFts = db.prepare(
-    `DELETE FROM search_fts WHERE rowid IN (SELECT rowid FROM fts_session_map WHERE session_id = ?)`
-  );
-
-  const stmtDeleteMap = db.prepare(
-    `DELETE FROM fts_session_map WHERE session_id = ?`
-  );
-
-  const stmtInsertFts = db.prepare(
-    `INSERT INTO search_fts (session_id, content, content_type) VALUES (?, ?, ?)`
-  );
-
-  const stmtInsertMap = db.prepare(
-    `INSERT INTO fts_session_map (rowid, session_id) VALUES (?, ?)`
-  );
-
-  const stmtSearch = db.prepare(`
-    SELECT
-      session_id,
-      snippet(search_fts, 1, '<mark>', '</mark>', '...', 40) AS snippet,
-      content_type,
-      rank
-    FROM search_fts
-    WHERE search_fts MATCH ?
-    ORDER BY rank
-    LIMIT ?
-  `);
-
-  const stmtCountIndexed = db.prepare(
-    `SELECT COUNT(*) as cnt FROM session_index`
-  );
 
   let totalSessions = 0;
   let isIndexing = false;
+  let savePending = false;
 
-  function sanitizeQuery(raw: string): string {
-    // Remove FTS5 metacharacters, keep words
-    let q = raw.replace(/[^\w\s]/g, " ").trim();
-    if (!q) return "";
-
-    // Split into words, add prefix matching for the last word (search-as-you-type)
-    const words = q.split(/\s+/).filter(Boolean);
-    if (words.length === 0) return "";
-
-    // Quote each word to escape any FTS5 keywords, add * to last word for prefix
-    const terms = words.map((w, i) =>
-      i === words.length - 1 ? `"${w}"*` : `"${w}"`
-    );
-    return terms.join(" ");
+  function scheduleSave(): void {
+    if (savePending) return;
+    savePending = true;
+    // Debounce writes — save on next tick after a batch of indexing
+    setImmediate(() => {
+      savePending = false;
+      persist();
+    });
   }
 
-  function deleteSessionRows(sessionId: string): void {
-    stmtDeleteFts.run(sessionId);
-    stmtDeleteMap.run(sessionId);
-    stmtDeleteIndex.run(sessionId);
+  function persist(): void {
+    try {
+      const data: PersistedData = {
+        sessions: Object.fromEntries(sessions),
+      };
+      writeFileSync(indexPath, JSON.stringify(data), "utf-8");
+    } catch (err) {
+      console.error("[search] Failed to persist index:", err);
+    }
+  }
+
+  function scoreMatch(tokens: string[], queryTokens: string[]): number {
+    let matched = 0;
+    for (const qt of queryTokens) {
+      for (const t of tokens) {
+        if (t === qt) { matched += 2; break; }
+        if (t.startsWith(qt)) { matched += 1; break; }
+      }
+    }
+    return matched;
+  }
+
+  function buildSnippet(text: string, queryTokens: string[]): string {
+    const lower = text.toLowerCase();
+    // Find the first matching token position
+    let bestPos = 0;
+    for (const qt of queryTokens) {
+      const idx = lower.indexOf(qt);
+      if (idx >= 0) { bestPos = idx; break; }
+    }
+
+    // Extract a window around the match
+    const start = Math.max(0, bestPos - 40);
+    const end = Math.min(text.length, bestPos + 120);
+    let snippet = (start > 0 ? "..." : "") + text.slice(start, end) + (end < text.length ? "..." : "");
+
+    // Highlight matches with <mark> tags
+    for (const qt of queryTokens) {
+      const re = new RegExp(`(${qt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\w*)`, "gi");
+      snippet = snippet.replace(re, "<mark>$1</mark>");
+    }
+
+    return snippet;
   }
 
   return {
     search(query: string, limit = 50): RawSearchResult[] {
-      const sanitized = sanitizeQuery(query);
-      if (!sanitized) return [];
+      const queryTokens = tokenize(query);
+      if (queryTokens.length === 0) return [];
 
-      try {
-        const rows = stmtSearch.all(sanitized, limit * 3) as {
-          session_id: string;
-          snippet: string;
-          content_type: string;
-          rank: number;
-        }[];
+      const results: RawSearchResult[] = [];
 
-        // Dedup by session — keep best rank per session
-        const seen = new Map<string, RawSearchResult>();
-        for (const row of rows) {
-          if (!seen.has(row.session_id)) {
-            seen.set(row.session_id, {
-              sessionId: row.session_id,
-              snippet: row.snippet,
-              contentType: row.content_type,
-              rank: row.rank,
-            });
-            if (seen.size >= limit) break;
+      for (const [sessionId, session] of sessions) {
+        let bestScore = 0;
+        let bestSnippet = "";
+        let bestContentType = "";
+
+        // Check session name first (title matches rank higher)
+        if (session.sessionName && session.sessionName !== "New Session") {
+          const nameTokens = tokenize(session.sessionName);
+          const nameScore = scoreMatch(nameTokens, queryTokens);
+          if (nameScore > 0) {
+            bestScore = nameScore * 3; // Boost title matches
+            bestSnippet = buildSnippet(session.sessionName, queryTokens);
+            bestContentType = "title";
           }
         }
 
-        return [...seen.values()];
-      } catch (err) {
-        console.error("[search] query failed:", err);
-        return [];
+        // Check content chunks
+        for (const chunk of session.chunks) {
+          const score = scoreMatch(chunk.tokens, queryTokens);
+          if (score > bestScore) {
+            bestScore = score;
+            bestSnippet = buildSnippet(chunk.text, queryTokens);
+            bestContentType = chunk.contentType;
+          }
+        }
+
+        if (bestScore > 0) {
+          results.push({
+            sessionId,
+            snippet: bestSnippet,
+            contentType: bestContentType,
+            rank: -bestScore, // Negative so lower = better (matching FTS5 convention)
+          });
+        }
       }
+
+      // Sort by rank (most negative = best match)
+      results.sort((a, b) => a.rank - b.rank);
+      return results.slice(0, limit);
     },
 
     indexSession(sessionId: string, transcriptPath: string, sessionName?: string): boolean {
-      // Change detection via file size + mtime + name
       let stat;
       try {
-        stat = statSync(transcriptPath);
+        const fs = require("fs");
+        stat = fs.statSync(transcriptPath);
       } catch {
-        return false; // file gone
+        return false;
       }
 
       const nameStr = sessionName ?? "";
-      const existing = stmtGetIndex.get(sessionId) as
-        | { file_size: number; file_mtime: number; session_name: string }
-        | undefined;
+      const existing = sessions.get(sessionId);
 
       if (
         existing &&
-        existing.file_size === stat.size &&
-        existing.file_mtime === stat.mtimeMs &&
-        existing.session_name === nameStr
+        existing.fileSize === stat.size &&
+        existing.fileMtime === stat.mtimeMs &&
+        existing.sessionName === nameStr
       ) {
         return false; // unchanged
       }
 
-      // Delete old rows and re-index
-      const chunks = extractSearchableText(transcriptPath);
-      const insertAll = db.transaction(() => {
-        deleteSessionRows(sessionId);
-        // Index session title if it's a real name (not the default)
-        if (sessionName && sessionName !== "New Session") {
-          const info = stmtInsertFts.run(sessionId, sessionName, "title");
-          stmtInsertMap.run(info.lastInsertRowid, sessionId);
-        }
-        for (const chunk of chunks) {
-          const info = stmtInsertFts.run(sessionId, chunk.text, chunk.contentType);
-          stmtInsertMap.run(info.lastInsertRowid, sessionId);
-        }
-        stmtUpsertIndex.run(
-          sessionId,
-          transcriptPath,
-          stat.size,
-          stat.mtimeMs,
-          Date.now(),
-          nameStr
-        );
+      const rawChunks = extractSearchableText(transcriptPath);
+      const chunks = rawChunks.map((c) => ({
+        text: c.text,
+        contentType: c.contentType,
+        tokens: tokenize(c.text),
+      }));
+
+      sessions.set(sessionId, {
+        transcriptPath,
+        fileSize: stat.size,
+        fileMtime: stat.mtimeMs,
+        sessionName: nameStr,
+        chunks,
       });
-      insertAll();
+
+      scheduleSave();
       return true;
     },
 
     removeSession(sessionId: string): void {
-      deleteSessionRows(sessionId);
+      if (sessions.delete(sessionId)) {
+        scheduleSave();
+      }
     },
 
-    reindexAll(sessions): void {
-      totalSessions = sessions.length;
-      for (const s of sessions) {
+    reindexAll(sessionList): void {
+      totalSessions = sessionList.length;
+      for (const s of sessionList) {
         if (s.transcriptPath) {
           this.indexSession(s.sessionId, s.transcriptPath, s.sessionName);
         }
@@ -252,10 +239,9 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
     },
 
     getStatus(): IndexStatus {
-      const row = stmtCountIndexed.get() as { cnt: number };
       return {
         totalSessions,
-        indexedSessions: row.cnt,
+        indexedSessions: sessions.size,
         isIndexing,
       };
     },
@@ -269,11 +255,7 @@ export function createSearchIndex(customDbPath?: string): SearchIndex {
     },
 
     close(): void {
-      try {
-        db.close();
-      } catch {
-        // ignore
-      }
+      persist();
     },
   };
 }

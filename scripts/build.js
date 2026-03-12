@@ -38,7 +38,7 @@ const configs = [
     outfile: "dist/main.cjs",
     platform: "node",
     format: "cjs",
-    external: ["electron", "better-sqlite3", "electron-updater"],
+    external: ["electron", "electron-updater"],
   },
   // Preload
   {
