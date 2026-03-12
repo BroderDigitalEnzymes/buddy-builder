@@ -1,6 +1,6 @@
 {
   "name": "buddy-builder",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "A desktop GUI for Claude Code. Manage multiple sessions, search conversations, and work with AI — visually.",
   "main": "dist/main.cjs",
   "bin": {
@@ -20,7 +20,13 @@
     "probe": "npx tsx src/probe.ts",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["claude", "claude-code", "electron", "gui", "ai"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "electron",
+    "gui",
+    "ai"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
