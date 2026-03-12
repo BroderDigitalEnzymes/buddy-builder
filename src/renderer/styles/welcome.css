@@ -67,3 +67,40 @@
 .welcome-new-btn:active {
   transform: scale(0.97);
 }
+
+.welcome-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.welcome-btn-group .welcome-new-btn {
+  margin-top: 0;
+}
+
+.welcome-advanced-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.welcome-advanced-btn:hover {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.welcome-advanced-btn:active {
+  transform: scale(0.97);
+}

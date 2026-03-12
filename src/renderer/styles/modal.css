@@ -223,3 +223,198 @@
 }
 
 .browse-btn:hover { background: var(--bg-3, var(--bg-1)); }
+
+/* ─── New Session Dialog ─── */
+
+.modal-panel {
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  width: 440px;
+  max-width: 90vw;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 12px 0 4px;
+}
+
+.field-label:first-child { margin-top: 0; }
+
+.field-input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.field-row {
+  display: flex;
+  gap: 6px;
+}
+
+.field-row .field-input { flex: 1; min-width: 0; }
+
+.field-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.field-btn:hover { background: var(--bg-3); }
+
+.field-select {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.field-select:focus { border-color: var(--accent); }
+
+.field-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+
+.field-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.modal-btn-primary {
+  padding: 7px 18px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.modal-btn-primary:hover { background: var(--accent-dim); }
+
+.modal-btn-secondary {
+  padding: 7px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.modal-btn-secondary:hover { background: var(--bg-2); }
+
+/* ─── Additional directories picker ─── */
+
+.field-add-dirs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-add-dir-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.field-add-dir-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-add-dir-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.field-add-dir-remove:hover { color: var(--danger, #d04040); }
+
+/* ─── Checkbox toggle ─── */
+
+.field-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.field-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}

@@ -48,6 +48,7 @@ type ManagedSession = {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCost: number;
+  effort: "low" | "medium" | "high" | "max" | null;
   // Auto-naming
   autoNamed: boolean;
   userNamed: boolean;   // user explicitly set the name (rename or creation option)
@@ -190,9 +191,13 @@ export type SessionManager = {
   remove(id: string): void;
   rename(id: string, name: string): void;
   resume(id: string): Promise<void>;
+  changeModel(id: string, model: string): Promise<void>;
+  changeEffort(id: string, effort: "low" | "medium" | "high" | "max"): Promise<void>;
+  fork(id: string): Promise<string>;
   getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null; permissionMode: PermissionMode };
   list(): SessionInfo[];
   getEntries(id: string): ChatEntry[];
+  exportSession(id: string, format: "markdown" | "json"): string;
   getMeta(id: string): IpcSessionMeta;
   setFavorite(id: string, favorite: boolean): void;
   updatePolicy(id: string, policy: ToolPolicyConfig): void;
@@ -238,6 +243,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCost: 0,
+      effort: null,
       autoNamed: true,  // don't auto-name until resumed
       userNamed: !!m.name,  // true if user explicitly renamed via metadata
       turnCount: 0,
@@ -289,6 +295,11 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         model: options?.model,
         systemPrompt: options?.systemPrompt,
         maxTurns: options?.maxTurns,
+        maxBudgetUsd: options?.maxBudgetUsd,
+        fallbackModel: options?.fallbackModel,
+        addDirs: options?.addDirs ? [...options.addDirs] : undefined,
+        effort: options?.effort,
+        worktree: options?.worktree,
       };
 
       const session = await createSession(config);
@@ -318,6 +329,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalCost: 0,
+        effort: options?.effort ?? null,
         autoNamed: !!options?.name,
         userNamed: !!options?.name,
         turnCount: 0,
@@ -424,6 +436,138 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
       sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });
     },
 
+    async changeModel(id: string, model: string): Promise<void> {
+      const managed = getManaged(id);
+      if (!managed.session) throw new Error("Session is dead");
+      if (managed.session.state !== "idle") throw new Error("Session must be idle to change model");
+      if (!managed.claudeSessionId) throw new Error("No Claude session ID — cannot change model");
+
+      // Kill the current process and wait for exit
+      const exitPromise = new Promise<void>((resolve) => {
+        const check = () => { if (!managed.session) resolve(); else setTimeout(check, 50); };
+        check();
+      });
+      managed.session.kill();
+      await Promise.race([exitPromise, new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Timed out waiting for session exit")), 3000))]);
+
+      try {
+        const config: SessionConfig = {
+          claudePath,
+          permissionMode: managed.permissionMode,
+          resumeSessionId: managed.claudeSessionId,
+          cwd: managed.cwd ?? undefined,
+          model,
+        };
+
+        const session = await createSession(config);
+        managed.session = session;
+        session.setToolPolicy(buildToolPolicy(managed.policy, managed.permissionMode));
+
+        ensureEntries(managed).push({ kind: "system", text: `Model changed to ${model}.`, ts: Date.now() });
+        managed.lastActiveAt = Date.now();
+
+        wireSession(managed, session, sink, () => onAssistantTurn(managed));
+        sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });
+      } catch (err) {
+        ensureEntries(managed).push({ kind: "system", text: `Failed to change model: ${err instanceof Error ? err.message : String(err)}`, ts: Date.now() });
+        sink({ kind: "error", sessionId: id, message: `Failed to change model: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    },
+
+    async changeEffort(id: string, effort: "low" | "medium" | "high" | "max"): Promise<void> {
+      const managed = getManaged(id);
+      if (!managed.session) throw new Error("Session is dead");
+      if (managed.session.state !== "idle") throw new Error("Session must be idle to change effort");
+      if (!managed.claudeSessionId) throw new Error("No Claude session ID — cannot change effort");
+
+      // Kill and restart with new effort level
+      const exitPromise = new Promise<void>((resolve) => {
+        const check = () => { if (!managed.session) resolve(); else setTimeout(check, 50); };
+        check();
+      });
+      managed.session.kill();
+      await Promise.race([exitPromise, new Promise<void>((_, reject) => setTimeout(() => reject(new Error("Timed out waiting for session exit")), 3000))]);
+
+      try {
+        const config: SessionConfig = {
+          claudePath,
+          permissionMode: managed.permissionMode,
+          resumeSessionId: managed.claudeSessionId,
+          cwd: managed.cwd ?? undefined,
+          model: managed.model ?? undefined,
+          effort,
+        };
+
+        const session = await createSession(config);
+        managed.session = session;
+        managed.effort = effort;
+        session.setToolPolicy(buildToolPolicy(managed.policy, managed.permissionMode));
+
+        ensureEntries(managed).push({ kind: "system", text: `Effort level changed to ${effort}.`, ts: Date.now() });
+        managed.lastActiveAt = Date.now();
+
+        wireSession(managed, session, sink, () => onAssistantTurn(managed));
+        sink({ kind: "stateChange", sessionId: id, from: "dead", to: session.state });
+      } catch (err) {
+        ensureEntries(managed).push({ kind: "system", text: `Failed to change effort: ${err instanceof Error ? err.message : String(err)}`, ts: Date.now() });
+        sink({ kind: "error", sessionId: id, message: `Failed to change effort: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    },
+
+    async fork(id: string): Promise<string> {
+      const source = getManaged(id);
+      if (!source.claudeSessionId) throw new Error("No Claude session ID — cannot fork");
+
+      const forkId = randomUUID();
+      counter++;
+      const now = Date.now();
+
+      const config: SessionConfig = {
+        claudePath,
+        permissionMode: source.permissionMode,
+        resumeSessionId: source.claudeSessionId,
+        cwd: source.cwd ?? undefined,
+        model: source.model ?? undefined,
+      };
+
+      const session = await createSession(config);
+      const policy: ToolPolicyConfig = { ...source.policy };
+      const managed: ManagedSession = {
+        id: forkId,
+        name: `${source.name} (fork)`,
+        projectName: source.projectName,
+        session,
+        claudeSessionId: null,  // will be set on ready event
+        cwd: source.cwd,
+        transcriptPath: null,
+        policy,
+        permissionMode: source.permissionMode,
+        entries: [{ kind: "system", text: `Forked from "${source.name}".`, ts: now }],
+        favorite: false,
+        createdAt: now,
+        lastActiveAt: now,
+        model: source.model,
+        claudeCodeVersion: null,
+        tools: [],
+        mcpServers: [],
+        skills: [],
+        agents: [],
+        slashCommands: [],
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalCost: 0,
+        effort: source.effort,
+        autoNamed: false,
+        userNamed: false,
+        turnCount: 0,
+      };
+      sessions.set(forkId, managed);
+
+      session.setToolPolicy(buildToolPolicy(policy, source.permissionMode));
+      wireSession(managed, session, sink, () => onAssistantTurn(managed));
+      return forkId;
+    },
+
     getResumeInfo(id: string): { claudeSessionId: string; cwd: string | null; permissionMode: PermissionMode } {
       const managed = getManaged(id);
       if (!managed.claudeSessionId) throw new Error("No Claude session ID to resume");
@@ -445,6 +589,77 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
 
     getEntries(id: string): ChatEntry[] {
       return ensureEntries(getManaged(id));
+    },
+
+    exportSession(id: string, format: "markdown" | "json"): string {
+      const managed = getManaged(id);
+      const entries = ensureEntries(managed);
+
+      if (format === "json") {
+        return JSON.stringify({
+          sessionId: managed.id,
+          name: managed.name,
+          projectName: managed.projectName,
+          cwd: managed.cwd,
+          model: managed.model,
+          createdAt: managed.createdAt,
+          entries: entries.map((e) => ({ ...e })),
+        }, null, 2);
+      }
+
+      // Markdown format
+      const lines: string[] = [];
+      lines.push(`# ${managed.name}`);
+      lines.push("");
+      if (managed.cwd) lines.push(`**Project:** ${managed.cwd}`);
+      if (managed.model) lines.push(`**Model:** ${managed.model}`);
+      lines.push(`**Created:** ${new Date(managed.createdAt).toISOString()}`);
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+
+      for (const e of entries) {
+        switch (e.kind) {
+          case "user":
+            lines.push(`## User`);
+            lines.push("");
+            lines.push(e.text);
+            lines.push("");
+            break;
+          case "text":
+            lines.push(`## Assistant`);
+            lines.push("");
+            lines.push(e.text);
+            lines.push("");
+            break;
+          case "tool":
+            lines.push(`### Tool: ${e.toolName}`);
+            lines.push("");
+            if (e.detail) lines.push(`> ${e.detail}`);
+            if (e.toolResult) {
+              lines.push("```");
+              lines.push(e.toolResult.slice(0, 2000));
+              lines.push("```");
+            }
+            lines.push("");
+            break;
+          case "system":
+            lines.push(`*${e.text}*`);
+            lines.push("");
+            break;
+          case "result":
+            lines.push(`---`);
+            lines.push(`*Cost: $${e.cost.toFixed(4)} · ${e.turns} turns · ${(e.durationMs / 1000).toFixed(1)}s*`);
+            lines.push("");
+            break;
+          case "compact":
+            lines.push(`*Context compacted (${e.trigger})*`);
+            lines.push("");
+            break;
+        }
+      }
+
+      return lines.join("\n");
     },
 
     getMeta(id: string): IpcSessionMeta {

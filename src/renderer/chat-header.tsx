@@ -89,6 +89,124 @@ export function PolicyPicker<T extends string>({ items, value, onChange, variant
   );
 }
 
+// ─── Model picker ────────────────────────────────────────────────
+
+const MODEL_OPTIONS = ["sonnet", "opus", "haiku"] as const;
+
+function ModelPicker({ session }: { session: SessionData }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
+
+  if (!session.model) return null;
+
+  const disabled = session.state !== "idle";
+
+  return (
+    <div className="model-picker-wrap" ref={ref}>
+      <button
+        className={`model-badge clickable${disabled ? " disabled" : ""}`}
+        onClick={() => { if (!disabled) setOpen((v) => !v); }}
+        disabled={disabled}
+        title={disabled ? "Model can only be changed when session is idle" : "Change model"}
+      >
+        {session.model}<span className="model-chevron">{"\u25BE"}</span>
+      </button>
+      {open && (
+        <div className="model-dropdown">
+          {MODEL_OPTIONS.map((m) => (
+            <button
+              key={m}
+              className={`model-dropdown-item${session.model === m ? " active" : ""}`}
+              onClick={() => {
+                setOpen(false);
+                if (m !== session.model) api().changeModel({ sessionId: session.id, model: m });
+              }}
+            >
+              <span className="model-dropdown-label">{m}</span>
+              {session.model === m && <span className="model-dropdown-check">{"\u2713"}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Effort level picker ─────────────────────────────────────────
+
+const EFFORT_OPTIONS = ["low", "medium", "high", "max"] as const;
+const EFFORT_LABELS: Record<string, string> = {
+  low: "Low",
+  medium: "Med",
+  high: "High",
+  max: "Max",
+};
+
+function EffortPicker({ session }: { session: SessionData }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
+
+  const currentEffort = session.effort ?? "high";
+  const disabled = session.state !== "idle";
+
+  return (
+    <div className="effort-picker-wrap" ref={ref}>
+      <button
+        className={`effort-badge clickable${disabled ? " disabled" : ""}`}
+        onClick={() => { if (!disabled) setOpen((v) => !v); }}
+        disabled={disabled}
+        title={disabled ? "Effort can only be changed when session is idle" : "Change effort level"}
+      >
+        {EFFORT_LABELS[currentEffort]}<span className="model-chevron">{"\u25BE"}</span>
+      </button>
+      {open && (
+        <div className="model-dropdown">
+          {EFFORT_OPTIONS.map((e) => (
+            <button
+              key={e}
+              className={`model-dropdown-item${currentEffort === e ? " active" : ""}`}
+              onClick={() => {
+                setOpen(false);
+                if (e !== currentEffort) api().changeEffort({ sessionId: session.id, effort: e });
+              }}
+            >
+              <span className="model-dropdown-label">{EFFORT_LABELS[e]} ({e})</span>
+              {currentEffort === e && <span className="model-dropdown-check">{"\u2713"}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Context usage meter ────────────────────────────────────────
+
+const CONTEXT_LIMIT = 200_000;
+
+function ContextMeter({ session }: { session: SessionData }) {
+  const pct = session.contextTokens > 0
+    ? Math.min(100, Math.round((session.contextTokens / CONTEXT_LIMIT) * 100))
+    : 0;
+  const level = pct >= 80 ? "high" : pct >= 50 ? "mid" : "low";
+
+  return (
+    <div className="context-meter" title={`Context: ~${formatTokens(session.contextTokens)} / ${formatTokens(CONTEXT_LIMIT)} tokens (${pct}%)`}>
+      <div className="context-meter-stats">
+        {formatTokens(session.totalInputTokens)} in / {formatTokens(session.totalOutputTokens)} out
+        {session.totalCost > 0 && <>{" \u00B7 $"}{session.totalCost.toFixed(3)}</>}
+      </div>
+      {pct > 0 && (
+        <div className="context-meter-bar">
+          <div className={`context-meter-fill ${level}`} style={{ width: `${pct}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Session info popover ────────────────────────────────────────
 
 function SessionInfoButton({ session }: { session: SessionData }) {
@@ -103,6 +221,57 @@ function SessionInfoButton({ session }: { session: SessionData }) {
     >
       {"\u2139\uFE0F"}
     </button>
+  );
+}
+
+// ─── Export button ───────────────────────────────────────────────
+
+function ExportButton({ session }: { session: SessionData }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
+
+  const handleExport = async (format: "markdown" | "json") => {
+    setOpen(false);
+    try {
+      const content = await api().exportSession({ sessionId: session.id, format });
+      const ext = format === "markdown" ? "md" : "json";
+      const blob = new Blob([content], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${session.name.replace(/[^a-zA-Z0-9_-]/g, "_")}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed:", err);
+    }
+  };
+
+  return (
+    <div className="export-btn-wrap" ref={ref}>
+      <button
+        className="chat-header-icon-btn"
+        title="Export conversation"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 2v8M5 7l3 3 3-3" /><path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" />
+        </svg>
+      </button>
+      {open && (
+        <div className="model-dropdown">
+          <button className="model-dropdown-item" onClick={() => handleExport("markdown")}>
+            <span className="model-dropdown-label">Export as Markdown</span>
+          </button>
+          <button className="model-dropdown-item" onClick={() => handleExport("json")}>
+            <span className="model-dropdown-label">Export as JSON</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -146,15 +315,36 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
           <span className="chat-header-name">{session.name}</span>
           <span className="chat-header-project">{session.projectName}</span>
         </div>
-        {session.model && <span className="model-badge">{session.model}</span>}
+        <ModelPicker session={session} />
+        <EffortPicker session={session} />
       </div>
       <div className="chat-header-right">
         {session.totalInputTokens > 0 && (
-          <span className="token-counter">
-            {formatTokens(session.totalInputTokens)} in / {formatTokens(session.totalOutputTokens)} out
-            {session.totalCost > 0 && <>{" \u00B7 $"}{session.totalCost.toFixed(3)}</>}
-          </span>
+          <ContextMeter session={session} />
         )}
+        <ExportButton session={session} />
+        {session.claudeSessionId && (
+          <button
+            className="chat-header-icon-btn fork-btn"
+            title="Fork session (create independent copy)"
+            disabled={session.state !== "idle"}
+            onClick={() => api().forkSession({ sessionId: session.id })}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="8" cy="3" r="2" /><circle cx="4" cy="13" r="2" /><circle cx="12" cy="13" r="2" /><path d="M8 5v3M8 8l-4 3M8 8l4 3" />
+            </svg>
+          </button>
+        )}
+        <button
+          className="chat-header-icon-btn compact-btn"
+          title="Compact conversation to free context"
+          disabled={session.state !== "idle"}
+          onClick={() => api().sendMessage({ sessionId: session.id, text: "/compact" })}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 2v4l4-3 4 3V2" /><path d="M4 14v-4l4 3 4-3v4" /><line x1="1" y1="8" x2="15" y2="8" />
+          </svg>
+        </button>
         <SessionInfoButton session={session} />
         {onOpenTerminal && session.claudeSessionId && (
           <button

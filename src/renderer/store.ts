@@ -36,6 +36,8 @@ export type SessionData = {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCost: number;
+  /** Latest per-turn input tokens — approximates current context fill. */
+  contextTokens: number;
   // Phase 3: init metadata
   model: string | null;
   tools: string[];
@@ -44,6 +46,10 @@ export type SessionData = {
   skills: string[];
   agents: string[];
   slashCommands: string[];
+  // Effort level
+  effort: "low" | "medium" | "high" | "max" | null;
+  // Rewind
+  redoStack: ChatEntry[];
   // Message queue — messages sent while busy, flushed on idle
   messageQueue: { text: string; images?: ImageData[] }[];
 };

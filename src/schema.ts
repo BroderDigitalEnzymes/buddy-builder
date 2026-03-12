@@ -30,6 +30,8 @@ export const UsageSchema = z
   .object({
     input_tokens: z.number(),
     output_tokens: z.number(),
+    cache_read_input_tokens: z.number().optional(),
+    cache_creation_input_tokens: z.number().optional(),
   })
   .catchall(z.unknown());
 
@@ -205,6 +207,11 @@ export const SessionConfigSchema = z.object({
   permissionMode: z.enum(PermissionModes).optional(),
   resumeSessionId: z.string().optional(),
   maxTurns: z.number().positive().optional(),
+  maxBudgetUsd: z.number().positive().optional(),
+  fallbackModel: z.string().optional(),
+  addDirs: z.array(z.string()).optional(),
+  effort: z.enum(["low", "medium", "high", "max"]).optional(),
+  worktree: z.union([z.boolean(), z.string()]).optional(),
   noSessionPersistence: z.boolean().optional(),
   env: z.record(z.string(), z.string()).optional(),
 });

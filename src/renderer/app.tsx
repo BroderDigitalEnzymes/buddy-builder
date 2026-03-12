@@ -26,6 +26,7 @@ import {
   navigateHome,
   openInApp,
   showSettings,
+  redoRewind,
 } from "./store-actions.js";
 import { TitleBar, InfoWindow } from "./components.js";
 import { ChatHeader } from "./chat-header.js";
@@ -35,6 +36,7 @@ import { Sidebar } from "./sidebar.js";
 import { IconRail } from "./icon-rail.js";
 import { SettingsView } from "./settings-view.js";
 import { WelcomeView } from "./welcome-view.js";
+import { NewSessionDialog } from "./home-view.js";
 import { StatusBar } from "./status-bar.js";
 import { SessionActionButtons } from "./session-actions.js";
 import type { ImageData, PolicyPreset } from "../ipc.js";
@@ -46,6 +48,9 @@ function App() {
 
   // Search state (lifted here so title bar + sidebar share it)
   const [search, setSearch] = useState("");
+
+  // New Session dialog
+  const [showNewDialog, setShowNewDialog] = useState(false);
 
   // Always-on-top state (popout windows only)
   const [isPinned, setIsPinned] = useState(false);
@@ -138,7 +143,19 @@ function App() {
           />
         </div>
       )}
-      <MessageList entries={entries} isBusy={activeSession?.state === "busy"} />
+      <MessageList
+        entries={entries}
+        isBusy={activeSession?.state === "busy"}
+        sessionId={activeId}
+        sessionState={activeSession?.state}
+        hasClaudeSessionId={!!activeSession?.claudeSessionId}
+      />
+      {activeSession && activeSession.redoStack.length > 0 && (
+        <div className="rewind-banner">
+          <span>Rewound — {activeSession.redoStack.length} entries hidden</span>
+          <button className="rewind-banner-btn" onClick={() => redoRewind(activeSession.id)}>Redo</button>
+        </div>
+      )}
       {!showResume && (
         <InputBar
           sessionId={activeId}
@@ -185,7 +202,7 @@ function App() {
   } else if (activeSession) {
     mainContent = chatArea;
   } else {
-    mainContent = <WelcomeView onNewSession={handleNewSession} />;
+    mainContent = <WelcomeView onNewSession={handleNewSession} onAdvancedNew={() => setShowNewDialog(true)} />;
   }
 
   return (
@@ -216,6 +233,7 @@ function App() {
         </div>
       </div>
       <StatusBar />
+      <NewSessionDialog open={showNewDialog} onClose={() => setShowNewDialog(false)} />
     </>
   );
 }

@@ -14,10 +14,12 @@ import {
   pickFolder,
   setSearchQuery,
   popOutSession,
+  type NewSessionOptions,
 } from "./store-actions.js";
 import { SettingsModal } from "./settings-modal.js";
 import { SessionActionButtons } from "./session-actions.js";
 import type { PermissionMode } from "../ipc.js";
+import { PERM_ITEMS } from "./chat-header.js";
 import { relativeTime } from "./time.js";
 import { groupByDirectory, type DirGroup } from "./dir-tree.js";
 
@@ -211,6 +213,146 @@ function DirGroupView({ group, poppedOutIds }: {
   );
 }
 
+// ─── New Session Dialog ──────────────────────────────────────────
+
+export function NewSessionDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [cwd, setCwd] = useState("");
+  const [addDirs, setAddDirs] = useState<string[]>([]);
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [maxBudget, setMaxBudget] = useState("");
+  const [fallbackModel, setFallbackModel] = useState("");
+  const [effort, setEffort] = useState<"" | "low" | "medium" | "high" | "max">("");
+  const [worktree, setWorktree] = useState(false);
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("default");
+
+  const handlePickFolder = useCallback(async () => {
+    const folder = await pickFolder();
+    if (folder) setCwd(folder);
+  }, []);
+
+  const handleAddDir = useCallback(async () => {
+    const folder = await pickFolder();
+    if (folder && !addDirs.includes(folder)) setAddDirs((prev) => [...prev, folder]);
+  }, [addDirs]);
+
+  const handleRemoveDir = useCallback((dir: string) => {
+    setAddDirs((prev) => prev.filter((d) => d !== dir));
+  }, []);
+
+  const handleCreate = useCallback(async () => {
+    const { api } = await import("./utils.js");
+    const cfg = await api().getConfig();
+    const resolvedCwd = cwd || cfg.defaultProjectsFolder || await pickFolder();
+    if (!resolvedCwd) return;
+
+    const budgetNum = parseFloat(maxBudget);
+    const opts: NewSessionOptions = {
+      permissionMode: permissionMode,
+      cwd: resolvedCwd,
+      name: name.trim() || undefined,
+      systemPrompt: systemPrompt.trim() || undefined,
+      maxBudgetUsd: budgetNum > 0 ? budgetNum : undefined,
+      fallbackModel: fallbackModel.trim() || undefined,
+      addDirs: addDirs.length > 0 ? addDirs : undefined,
+      effort: effort || undefined,
+      worktree: worktree || undefined,
+    };
+    const id = await createSession(opts);
+    if (id && cfg.popOutByDefault) popOutSession(id);
+    onClose();
+    setName(""); setCwd(""); setAddDirs([]); setSystemPrompt(""); setMaxBudget(""); setFallbackModel(""); setEffort(""); setWorktree(false); setPermissionMode("default");
+  }, [name, cwd, addDirs, systemPrompt, maxBudget, fallbackModel, effort, worktree, permissionMode, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-panel new-session-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">New Session</h2>
+          <button className="modal-close" onClick={onClose}>{"\u00D7"}</button>
+        </div>
+        <div className="modal-body">
+          <label className="field-label">Name (optional)</label>
+          <input className="field-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Session name" />
+
+          <label className="field-label">Working Directory</label>
+          <div className="field-row">
+            <input className="field-input" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="Default folder or pick..." readOnly />
+            <button className="field-btn" onClick={handlePickFolder}>Browse</button>
+          </div>
+
+          <label className="field-label">Additional Directories (optional)</label>
+          <div className="field-add-dirs">
+            {addDirs.map((dir) => (
+              <div key={dir} className="field-add-dir-item">
+                <span className="field-add-dir-path">{dir}</span>
+                <button className="field-add-dir-remove" onClick={() => handleRemoveDir(dir)} title="Remove">{"\u00D7"}</button>
+              </div>
+            ))}
+            <button className="field-btn" onClick={handleAddDir}>+ Add Directory</button>
+          </div>
+
+          <label className="field-label">Permission Mode</label>
+          <select className="field-select" value={permissionMode} onChange={(e) => setPermissionMode(e.target.value as PermissionMode)}>
+            {PERM_ITEMS.map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
+          </select>
+
+          <label className="field-label">System Prompt (optional)</label>
+          <textarea
+            className="field-textarea"
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            placeholder="Custom instructions appended to Claude's system prompt..."
+            rows={4}
+          />
+
+          <label className="field-label">Budget Limit (optional)</label>
+          <input
+            className="field-input"
+            type="number"
+            step="0.5"
+            min="0"
+            value={maxBudget}
+            onChange={(e) => setMaxBudget(e.target.value)}
+            placeholder="Max spend in USD (e.g. 5.00)"
+          />
+
+          <label className="field-label">Fallback Model (optional)</label>
+          <select className="field-select" value={fallbackModel} onChange={(e) => setFallbackModel(e.target.value)}>
+            <option value="">None</option>
+            <option value="sonnet">sonnet</option>
+            <option value="opus">opus</option>
+            <option value="haiku">haiku</option>
+          </select>
+
+          <label className="field-label">Effort Level (optional)</label>
+          <select className="field-select" value={effort} onChange={(e) => setEffort(e.target.value as typeof effort)}>
+            <option value="">Default (high)</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="max">Max (extended thinking)</option>
+          </select>
+
+          <label className="field-label">Worktree Isolation</label>
+          <label className="field-toggle">
+            <input type="checkbox" checked={worktree} onChange={(e) => setWorktree(e.target.checked)} />
+            <span>Create a git worktree for safe parallel changes</span>
+          </label>
+        </div>
+        <div className="modal-footer">
+          <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="modal-btn-primary" onClick={handleCreate}>Create Session</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type HomeViewMode = "list" | "tree";
 
 // ─── HomeView ───────────────────────────────────────────────────
@@ -220,6 +362,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
   poppedOutIds: Set<string>;
 }) {
   const [showSettings, setShowSettings] = useState(false);
+  const [showNewDialog, setShowNewDialog] = useState(false);
   const [viewMode, setViewMode] = useState<HomeViewMode>("list");
 
   const { searchQuery, searchResults } = getState();
@@ -256,15 +399,9 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
     }
   }, []);
 
-  const handleNewPickFolder = useCallback(async (e: React.MouseEvent) => {
+  const handleNewAdvanced = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    const { api } = await import("./utils.js");
-    const cfg = await api().getConfig();
-    const cwd = await pickFolder();
-    if (cwd) {
-      const id = await createSession(cfg.defaultPermissionMode ?? "default", cwd);
-      if (id && cfg.popOutByDefault) popOutSession(id);
-    }
+    setShowNewDialog(true);
   }, []);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -331,7 +468,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
                 </svg>
                 New Session
               </button>
-              <button className="home-new-arrow" onClick={handleNewPickFolder} title="Choose folder...">
+              <button className="home-new-arrow" onClick={handleNewAdvanced} title="Advanced new session...">
                 <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M4 6l4 4 4-4" />
                 </svg>
@@ -409,6 +546,7 @@ export const HomeView = memo(function HomeView({ sessions, poppedOutIds }: {
         </div>
       </div>
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <NewSessionDialog open={showNewDialog} onClose={() => setShowNewDialog(false)} />
     </>
   );
 });

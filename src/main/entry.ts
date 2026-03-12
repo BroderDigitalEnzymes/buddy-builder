@@ -264,11 +264,15 @@ function buildHandlers(mgr: SessionManager): Handlers {
     renameSession:     ({ sessionId, name }) => { mgr.rename(sessionId, name); },
     setFavorite:       ({ sessionId, favorite }) => { mgr.setFavorite(sessionId, favorite); },
     resumeSession:     ({ sessionId }) => mgr.resume(sessionId),
+    changeModel:       ({ sessionId, model }) => mgr.changeModel(sessionId, model),
+    forkSession:       ({ sessionId }) => mgr.fork(sessionId),
+    changeEffort:      ({ sessionId, effort }) => mgr.changeEffort(sessionId, effort),
     resumeInTerminal:  ({ sessionId }) => {
       const { claudeSessionId, cwd, permissionMode } = mgr.getResumeInfo(sessionId);
       const skipPerms = permissionMode === "bypassPermissions" ? " --dangerously-skip-permissions" : "";
       openInTerminal(cwd ?? process.env.HOME ?? process.env.USERPROFILE ?? ".", `claude --resume ${claudeSessionId}${skipPerms}`);
     },
+    exportSession:     ({ sessionId, format }) => mgr.exportSession(sessionId, format),
     deleteSession:     ({ sessionId }) => { mgr.remove(sessionId); },
     getSessionEntries: ({ sessionId }) => mgr.getEntries(sessionId),
     getConfig:         () => loadConfig(),

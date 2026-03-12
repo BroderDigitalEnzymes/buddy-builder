@@ -94,6 +94,11 @@ export type CreateSessionOptions = {
   readonly model?: string;
   readonly systemPrompt?: string;
   readonly maxTurns?: number;
+  readonly maxBudgetUsd?: number;
+  readonly fallbackModel?: string;
+  readonly addDirs?: readonly string[];
+  readonly effort?: "low" | "medium" | "high" | "max";
+  readonly worktree?: boolean | string;
 };
 
 /** Map a UI permission mode to an initial tool policy preset. */
@@ -188,7 +193,11 @@ export type InvokeContract = {
   renameSession:     { in: { sessionId: string; name: string }; out: void };
   setFavorite:       { in: { sessionId: string; favorite: boolean }; out: void };
   resumeSession:     { in: { sessionId: string }; out: void };
+  changeModel:       { in: { sessionId: string; model: string }; out: void };
+  forkSession:       { in: { sessionId: string }; out: string };
+  changeEffort:      { in: { sessionId: string; effort: "low" | "medium" | "high" | "max" }; out: void };
   resumeInTerminal:  { in: { sessionId: string }; out: void };
+  exportSession:     { in: { sessionId: string; format: "markdown" | "json" }; out: string };
   deleteSession:     { in: { sessionId: string }; out: void };
   getSessionEntries: { in: { sessionId: string }; out: ChatEntry[] };
   getConfig:         { in: undefined; out: AppConfig };
@@ -268,7 +277,7 @@ export type Pushers = EventPushers<EventContract>;
 export const INVOKE_CHANNELS = [
   "createSession", "sendMessage", "answerQuestion", "approvePermission", "interruptSession", "killSession",
   "listSessions", "updatePolicy", "getPolicy",
-  "renameSession", "setFavorite", "resumeSession", "resumeInTerminal", "deleteSession", "getSessionEntries",
+  "renameSession", "setFavorite", "resumeSession", "changeModel", "forkSession", "changeEffort", "resumeInTerminal", "exportSession", "deleteSession", "getSessionEntries",
   "getConfig", "setConfig", "pickFolder", "createProjectFolder", "takeScreenshot",
   "getSessionMeta", "openInfoWindow",
   "popOutSession", "popInSession", "focusPopout", "setAlwaysOnTop",
