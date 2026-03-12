@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Marked } from "marked";
 import type { ChatEntry, ToolStatus } from "../ipc.js";
-import type { SessionState } from "../ipc.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
 import { getSender, formatTokens, type Sender } from "./utils.js";
 import { formatTime } from "./time.js";
 import { isHiddenEntry } from "./message-filters.js";
-import { rewindToCheckpoint, forkSession } from "./store-actions.js";
 
 // ─── Rate Limit Banner ──────────────────────────────────────────
 
@@ -216,9 +214,9 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowPr
     );
   }
 
-  // Result: render as checkpoint marker
+  // Result entries: skip (cost shown in status bar)
   if (entry.kind === "result") {
-    return null; // rendered separately by CheckpointRow
+    return null;
   }
 
   const avatarClass = AVATAR_CLASSES[sender];
@@ -253,66 +251,14 @@ export function EntryRow({ entry, isGroupStart, prevKind, nextKind }: EntryRowPr
   );
 }
 
-// ─── Checkpoint row ──────────────────────────────────────────────
-
-type CheckpointRowProps = {
-  entry: ChatEntry & { kind: "result" };
-  checkpointNumber: number;
-  sessionId: string | null;
-  sessionState: SessionState;
-  hasClaudeSessionId: boolean;
-};
-
-function CheckpointRow({ entry, checkpointNumber, sessionId, sessionState, hasClaudeSessionId }: CheckpointRowProps) {
-  const cost = entry.cost > 0 ? `$${entry.cost.toFixed(4)}` : "";
-  const duration = `${(entry.durationMs / 1000).toFixed(1)}s`;
-  const disabled = sessionState === "busy";
-
-  return (
-    <div className="msg-row msg-row-system">
-      <div className="msg-checkpoint">
-        <span className="checkpoint-badge">#{checkpointNumber}</span>
-        <span className="checkpoint-info">
-          {cost && <>{cost} &middot; </>}{duration}
-        </span>
-        <span className="checkpoint-actions">
-          {sessionId && (
-            <button
-              className="checkpoint-btn"
-              disabled={disabled}
-              onClick={() => rewindToCheckpoint(sessionId, entry.ts)}
-              title="Rewind: hide all messages after this point"
-            >
-              Rewind
-            </button>
-          )}
-          {sessionId && hasClaudeSessionId && (
-            <button
-              className="checkpoint-btn"
-              disabled={disabled}
-              onClick={() => forkSession(sessionId)}
-              title="Fork: create new session from this conversation"
-            >
-              Fork
-            </button>
-          )}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 // ─── Message list with auto-scroll + grouping ────────────────────
 
 type MessageListProps = {
   entries: ChatEntry[];
   isBusy?: boolean;
-  sessionId?: string | null;
-  sessionState?: SessionState;
-  hasClaudeSessionId?: boolean;
 };
 
-export function MessageList({ entries, isBusy, sessionId, sessionState, hasClaudeSessionId }: MessageListProps) {
+export function MessageList({ entries, isBusy }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
@@ -331,19 +277,6 @@ export function MessageList({ entries, isBusy, sessionId, sessionState, hasClaud
 
   const visible = entries.filter(e => !isHiddenEntry(e));
 
-  // Compute checkpoint numbers for result entries (must be before early return — rules of hooks)
-  const checkpointMap = useMemo(() => {
-    const map = new Map<number, number>();
-    let num = 0;
-    for (const e of visible) {
-      if (e.kind === "result") {
-        num++;
-        map.set(e.ts, num);
-      }
-    }
-    return map;
-  }, [visible]);
-
   if (visible.length === 0) {
     return (
       <div id="chat" className="chat-area chat-empty" ref={containerRef} />
@@ -354,19 +287,8 @@ export function MessageList({ entries, isBusy, sessionId, sessionState, hasClaud
     <div id="chat" className="chat-area" ref={containerRef} onScroll={onScroll}>
       <div className="messages">
         {visible.map((entry, i) => {
-          // Result entries → checkpoint pill
-          if (entry.kind === "result") {
-            return (
-              <CheckpointRow
-                key={`cp-${i}`}
-                entry={entry}
-                checkpointNumber={checkpointMap.get(entry.ts) ?? 0}
-                sessionId={sessionId ?? null}
-                sessionState={sessionState ?? "dead"}
-                hasClaudeSessionId={hasClaudeSessionId ?? false}
-              />
-            );
-          }
+          // Result entries — skip rendering (cost shown in status bar)
+          if (entry.kind === "result") return null;
 
           const prevEntry = visible[i - 1];
           const sender = getSender(entry.kind);

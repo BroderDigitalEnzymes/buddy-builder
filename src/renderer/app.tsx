@@ -146,9 +146,6 @@ function App() {
       <MessageList
         entries={entries}
         isBusy={activeSession?.state === "busy"}
-        sessionId={activeId}
-        sessionState={activeSession?.state}
-        hasClaudeSessionId={!!activeSession?.claudeSessionId}
       />
       {activeSession && activeSession.redoStack.length > 0 && (
         <div className="rewind-banner">

@@ -328,61 +328,6 @@
   background: var(--accent-bg);
 }
 
-/* ─── Checkpoint markers ─── */
-
-.msg-checkpoint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  font-size: 11px;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-  background: rgba(255,255,255,0.015);
-  margin: 4px 0;
-}
-
-.checkpoint-badge {
-  font-weight: 700;
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  background: rgba(0,168,232,0.1);
-  padding: 1px 6px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
-.checkpoint-info {
-  font-family: var(--font-mono);
-  flex: 1;
-}
-
-.checkpoint-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.msg-checkpoint:hover .checkpoint-actions { opacity: 1; }
-
-.checkpoint-btn {
-  padding: 2px 8px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--bg-2);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.checkpoint-btn:hover { background: var(--bg-3); border-color: var(--border-strong); }
-.checkpoint-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
-
 /* ─── Rewind banner ─── */
 
 .rewind-banner {
