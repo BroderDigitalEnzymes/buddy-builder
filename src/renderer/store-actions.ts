@@ -387,6 +387,54 @@ function handleEvent(event: SessionEvent): void {
   emit();
 }
 
+// ─── Fork ────────────────────────────────────────────────────────
+
+export async function forkSession(sessionId: string): Promise<string | null> {
+  const source = state.sessions.get(sessionId);
+  if (!source) return null;
+
+  try {
+    const forkId = await api().forkSession({ sessionId });
+    state.counter++;
+    state.sessions.set(forkId, {
+      id: forkId,
+      name: `${source.name} (fork)`,
+      projectName: source.projectName,
+      state: "idle",
+      claudeSessionId: null,
+      cwd: source.cwd,
+      permissionMode: source.permissionMode,
+      policyPreset: source.policyPreset,
+      favorite: false,
+      lastActiveAt: Date.now(),
+      entries: [{ kind: "system", text: `Forked from "${source.name}".`, ts: Date.now() }],
+      rateLimit: null,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCost: 0,
+      contextTokens: 0,
+      model: source.model,
+      tools: [],
+      mcpServers: [],
+      claudeCodeVersion: null,
+      skills: [],
+      agents: [],
+      slashCommands: [],
+      effort: source.effort,
+      redoStack: [],
+      messageQueue: [],
+    });
+    state.activeId = forkId;
+    reportActiveId();
+    state.sidebarView = "sessions";
+    emit();
+    return forkId;
+  } catch (err) {
+    console.error("[store] forkSession FAILED:", err);
+    return null;
+  }
+}
+
 // ─── Rewind / Checkpoint ────────────────────────────────────────
 
 export function rewindToCheckpoint(sessionId: string, checkpointTs: number): void {

@@ -346,6 +346,17 @@
   background: rgba(245, 197, 24, 0.04);
 }
 
+/* ─── Search highlight / dim for live sessions ─── */
+
+.session-highlighted {
+  background: var(--accent-bg);
+  border-left: 2px solid var(--accent);
+}
+
+.session-dimmed {
+  opacity: 0.4;
+}
+
 .pinned-divider {
   height: 1px;
   margin: 4px 12px;

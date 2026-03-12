@@ -55,6 +55,9 @@ export function applySessionEvent(data: SessionData, event: SessionEvent): Event
     case "nameChanged":
       data.name = event.name;
       break;
+    case "effortChanged":
+      data.effort = event.effort;
+      break;
     case "popoutChanged":
       if (event.poppedOut) effects.addPoppedOut = event.sessionId;
       else effects.removePoppedOut = event.sessionId;

@@ -55,6 +55,7 @@ export type SessionEvent =
   | { kind: "exit"; sessionId: string; code: number | null }
   | { kind: "compact"; sessionId: string; trigger: string; preTokens: number | null }
   | { kind: "nameChanged"; sessionId: string; name: string }
+  | { kind: "effortChanged"; sessionId: string; effort: "low" | "medium" | "high" | "max" }
   | { kind: "popoutChanged"; sessionId: string; poppedOut: boolean };
 
 export type SessionInfo = {

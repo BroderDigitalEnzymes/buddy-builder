@@ -3,10 +3,10 @@ import { Marked } from "marked";
 import type { ChatEntry, ToolStatus } from "../ipc.js";
 import type { SessionState } from "../ipc.js";
 import { ToolViewTabs, getMatchingViews } from "./tool-views/index.js";
-import { getSender, formatTokens, api, type Sender } from "./utils.js";
+import { getSender, formatTokens, type Sender } from "./utils.js";
 import { formatTime } from "./time.js";
 import { isHiddenEntry } from "./message-filters.js";
-import { rewindToCheckpoint } from "./store-actions.js";
+import { rewindToCheckpoint, forkSession } from "./store-actions.js";
 
 // ─── Rate Limit Banner ──────────────────────────────────────────
 
@@ -88,6 +88,9 @@ type ToolEntryProps = {
 };
 
 export function ToolEntry({ entry }: ToolEntryProps) {
+  // Hook must be called unconditionally (rules of hooks)
+  const [open, setOpen] = useState(false);
+
   const matchedViews = getMatchingViews(entry);
   const topView = matchedViews[0];
 
@@ -97,8 +100,6 @@ export function ToolEntry({ entry }: ToolEntryProps) {
   }
 
   // Standard: collapsible <details> with view tabs inside
-  const [open, setOpen] = useState(false);
-
   return (
     <details
       className={`tool-entry tool-${entry.status}`}
@@ -272,7 +273,7 @@ function CheckpointRow({ entry, checkpointNumber, sessionId, sessionState, hasCl
       <div className="msg-checkpoint">
         <span className="checkpoint-badge">#{checkpointNumber}</span>
         <span className="checkpoint-info">
-          {cost && <>{cost} &middot; </>}{entry.turns} turns &middot; {duration}
+          {cost && <>{cost} &middot; </>}{duration}
         </span>
         <span className="checkpoint-actions">
           {sessionId && (
@@ -289,7 +290,7 @@ function CheckpointRow({ entry, checkpointNumber, sessionId, sessionState, hasCl
             <button
               className="checkpoint-btn"
               disabled={disabled}
-              onClick={() => api().forkSession({ sessionId })}
+              onClick={() => forkSession(sessionId)}
               title="Fork: create new session from this conversation"
             >
               Fork
@@ -330,13 +331,7 @@ export function MessageList({ entries, isBusy, sessionId, sessionState, hasClaud
 
   const visible = entries.filter(e => !isHiddenEntry(e));
 
-  if (visible.length === 0) {
-    return (
-      <div id="chat" className="chat-area chat-empty" ref={containerRef} />
-    );
-  }
-
-  // Compute checkpoint numbers for result entries
+  // Compute checkpoint numbers for result entries (must be before early return — rules of hooks)
   const checkpointMap = useMemo(() => {
     const map = new Map<number, number>();
     let num = 0;
@@ -348,6 +343,12 @@ export function MessageList({ entries, isBusy, sessionId, sessionState, hasClaud
     }
     return map;
   }, [visible]);
+
+  if (visible.length === 0) {
+    return (
+      <div id="chat" className="chat-area chat-empty" ref={containerRef} />
+    );
+  }
 
   return (
     <div id="chat" className="chat-area" ref={containerRef} onScroll={onScroll}>

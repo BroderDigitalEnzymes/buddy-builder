@@ -29,6 +29,7 @@ export function sessionMatchesQuery(s: SessionData, query: string): boolean {
 
 export type SplitResult = {
   live: SessionData[];
+  liveMatchIds: Set<string>;
   pinned: SessionData[];
   history: SessionData[];
   historyAll: SessionData[];
@@ -51,7 +52,8 @@ export function splitSessions(
     sessionMatchesQuery(s, q) || (contentMatchIds?.has(s.id) ?? false);
 
   const live = sessions.filter((s) => s.state !== "dead");
-  const filteredLive = q ? live.filter(matches) : live;
+  // Always show all live sessions; highlight matches instead of filtering
+  const liveMatchIds = q ? new Set(live.filter(matches).map((s) => s.id)) : new Set<string>();
 
   // Pinned: favorites that are dead
   let pinned = sessions.filter((s) => s.favorite && s.state === "dead");
@@ -70,7 +72,8 @@ export function splitSessions(
   if (q) allDead = allDead.filter(matches);
 
   return {
-    live: filteredLive,
+    live,
+    liveMatchIds,
     pinned,
     history: dead.slice(0, limit),
     historyAll: allDead,

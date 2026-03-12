@@ -78,6 +78,8 @@ type SessionItemProps = {
   poppedOutIds?: Set<string>;
   live: boolean;
   pinned?: boolean;
+  highlighted?: boolean;
+  dimmed?: boolean;
   timeLabel?: string;
   snippet?: string;
   onSwitch: (id: string) => void;
@@ -87,12 +89,12 @@ type SessionItemProps = {
   onToggleFavorite?: (id: string) => void;
 };
 
-function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, timeLabel, snippet, onSwitch, onKill, onDelete, onRename, onToggleFavorite }: SessionItemProps) {
+function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, highlighted, dimmed, timeLabel, snippet, onSwitch, onKill, onDelete, onRename, onToggleFavorite }: SessionItemProps) {
   const isDead = s.state === "dead";
   const isPoppedOut = poppedOutIds?.has(s.id) ?? false;
   return (
     <button
-      className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""} ${isPoppedOut ? "popped-out" : ""} ${pinned ? "session-pinned" : ""}`}
+      className={`session-item ${s.id === activeId ? "active" : ""} ${isDead ? "session-dead" : ""} ${isPoppedOut ? "popped-out" : ""} ${pinned ? "session-pinned" : ""} ${highlighted ? "session-highlighted" : ""} ${dimmed ? "session-dimmed" : ""}`}
       style={{ paddingLeft: `${12 + depth * 14}px` }}
       onClick={() => onSwitch(s.id)}
       title={isPoppedOut ? "Focus pop-out window" : undefined}
@@ -128,7 +130,7 @@ function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, 
 
 function DirGroupList({
   groups, unknown, activeId, poppedOutIds,
-  onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live, snippets,
+  onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live, snippets, matchIds,
 }: {
   groups: DirGroup[];
   unknown: SessionData[];
@@ -142,6 +144,7 @@ function DirGroupList({
   onToggleFavorite: (id: string) => void;
   live: boolean;
   snippets?: Map<string, string>;
+  matchIds?: Set<string>;
 }) {
   if (groups.length === 0 && unknown.length === 0) {
     return (
@@ -150,6 +153,8 @@ function DirGroupList({
       </div>
     );
   }
+
+  const hasSearch = !!matchIds;
 
   return (
     <>
@@ -174,6 +179,8 @@ function DirGroupList({
               activeId={activeId}
               poppedOutIds={poppedOutIds}
               live={live}
+              highlighted={hasSearch && matchIds.has(s.id)}
+              dimmed={hasSearch && !matchIds.has(s.id)}
               snippet={snippets?.get(s.id)}
               onSwitch={onSwitch}
               onKill={onKill}
@@ -192,6 +199,8 @@ function DirGroupList({
           activeId={activeId}
           poppedOutIds={poppedOutIds}
           live={live}
+          highlighted={hasSearch && matchIds.has(s.id)}
+          dimmed={hasSearch && !matchIds.has(s.id)}
           snippet={snippets?.get(s.id)}
           onSwitch={onSwitch}
           onKill={onKill}
@@ -276,12 +285,12 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
 
   // Split into live / pinned / history via pure module
   const pinnedIds = useMemo(() => new Set(sessions.filter(s => s.favorite).map(s => s.id)), [sessions]);
-  const { live: filteredLive, pinned: pinnedSessions, history: historySessions, historyAll: historyForTree } = useMemo(
+  const { live: liveSessions, liveMatchIds, pinned: pinnedSessions, history: historySessions, historyAll: historyForTree } = useMemo(
     () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT, q.trim() ? contentMatchIds : undefined),
     [sessions, q, pinnedIds, contentMatchIds],
   );
 
-  const liveGroups = useMemo(() => groupByDirectory(filteredLive), [filteredLive]);
+  const liveGroups = useMemo(() => groupByDirectory(liveSessions), [liveSessions]);
   const historyGroups = useMemo(() => groupByDirectory(historyForTree), [historyForTree]);
   const handleCreateInDir = useCallback((cwd: string) => onCreate(perm, cwd), [perm, onCreate]);
   const [pendingFolder, setPendingFolder] = useState<string | null>(null);
@@ -361,6 +370,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                 onToggleFavorite={onToggleFavorite}
                 live={true}
                 snippets={contentMatches}
+                matchIds={q.trim() ? liveMatchIds : undefined}
               />
             </div>
           </div>

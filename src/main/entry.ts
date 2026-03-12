@@ -184,6 +184,16 @@ function createPopoutWindow(sessionId: string): void {
   dispatch({ kind: "popoutChanged", sessionId, poppedOut: true });
   dlog(`[popout] created id=${win.id} session=${sessionId}`);
 
+  // Capture renderer warnings/errors for debugging
+  win.webContents.on("console-message", (_e, level, message, line, sourceId) => {
+    if (level >= 2) dlog(`[popout-console][ERROR] ${message} (${sourceId}:${line})`);
+  });
+  win.webContents.on("did-fail-load", (_e, code, desc) => {
+    dlog(`[popout] DID-FAIL-LOAD code=${code} desc=${desc}`);
+  });
+  win.webContents.on("preload-error", (_e, preloadPath, error) => {
+    dlog(`[popout] PRELOAD-ERROR path=${preloadPath} error=${error}`);
+  });
   win.webContents.on("render-process-gone", (_e, details) => {
     dlog(`[popout] RENDER-PROCESS-GONE id=${win.id} reason=${details.reason} exitCode=${details.exitCode}`);
   });

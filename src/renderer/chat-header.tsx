@@ -3,6 +3,7 @@ import type { SessionData } from "./store.js";
 import type { PolicyPreset, PermissionMode } from "../ipc.js";
 import { useClickOutside } from "./hooks.js";
 import { api, formatTokens } from "./utils.js";
+import { forkSession } from "./store-actions.js";
 
 // ─── SVG icons for policy picker ────────────────────────────────
 
@@ -328,7 +329,7 @@ export const ChatHeader = memo(function ChatHeader({ session, onSetPreset, onTog
             className="chat-header-icon-btn fork-btn"
             title="Fork session (create independent copy)"
             disabled={session.state !== "idle"}
-            onClick={() => api().forkSession({ sessionId: session.id })}
+            onClick={() => forkSession(session.id)}
           >
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="8" cy="3" r="2" /><circle cx="4" cy="13" r="2" /><circle cx="12" cy="13" r="2" /><path d="M8 5v3M8 8l-4 3M8 8l4 3" />
