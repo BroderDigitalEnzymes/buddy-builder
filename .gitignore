@@ -4,3 +4,5 @@ dist/
 NUL
 *.png
 fetch_time.py
+.idea/
+.DS_Store
