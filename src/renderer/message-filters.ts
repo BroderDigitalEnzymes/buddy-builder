@@ -12,8 +12,7 @@ const HIDDEN_PATTERNS: RegExp[] = [
 
 /** Returns true if the entry should be hidden from the chat UI. */
 export function isHiddenEntry(entry: ChatEntry): boolean {
-  // Always hide result entries (cost shown in status bar)
-  if (entry.kind === "result") return true;
+  // Result entries are now shown as checkpoint markers (no longer hidden)
 
   // Check text content on any entry that has it
   const text = (entry as any).text;

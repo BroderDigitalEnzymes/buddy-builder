@@ -79,6 +79,7 @@ export async function loadPersistedSessions(): Promise<void> {
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalCost: 0,
+        contextTokens: 0,
         model: null,
         tools: [],
         mcpServers: [],
@@ -86,6 +87,8 @@ export async function loadPersistedSessions(): Promise<void> {
         skills: [],
         agents: [],
         slashCommands: [],
+        effort: null,
+        redoStack: [],
         messageQueue: [],
       });
     }
@@ -107,6 +110,11 @@ export type NewSessionOptions = {
   model?: string;
   systemPrompt?: string;
   maxTurns?: number;
+  maxBudgetUsd?: number;
+  fallbackModel?: string;
+  addDirs?: string[];
+  effort?: "low" | "medium" | "high" | "max";
+  worktree?: boolean | string;
   openInApp?: boolean; // false = terminal only, default true
 };
 
@@ -129,6 +137,11 @@ export async function createSession(
       model: opts.model,
       systemPrompt: opts.systemPrompt,
       maxTurns: opts.maxTurns,
+      maxBudgetUsd: opts.maxBudgetUsd,
+      fallbackModel: opts.fallbackModel,
+      addDirs: opts.addDirs,
+      effort: opts.effort,
+      worktree: opts.worktree,
     });
     state.counter++;
     state.sessions.set(id, {
@@ -147,6 +160,7 @@ export async function createSession(
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCost: 0,
+      contextTokens: 0,
       model: opts.model ?? null,
       tools: [],
       mcpServers: [],
@@ -154,6 +168,8 @@ export async function createSession(
       skills: [],
       agents: [],
       slashCommands: [],
+      effort: opts.effort ?? null,
+      redoStack: [],
       messageQueue: [],
     });
     state.activeId = id;
@@ -368,6 +384,33 @@ function handleEvent(event: SessionEvent): void {
   // Replace object reference so memo'd components re-render
   state.sessions.set(event.sessionId, { ...data });
 
+  emit();
+}
+
+// ─── Rewind / Checkpoint ────────────────────────────────────────
+
+export function rewindToCheckpoint(sessionId: string, checkpointTs: number): void {
+  const data = state.sessions.get(sessionId);
+  if (!data) return;
+
+  // Find the result entry with this timestamp
+  const idx = data.entries.findIndex((e) => e.kind === "result" && e.ts === checkpointTs);
+  if (idx < 0) return;
+
+  // Keep entries up to and including the checkpoint; splice the rest into redo stack
+  const removed = data.entries.splice(idx + 1);
+  data.redoStack = removed;
+  state.sessions.set(sessionId, { ...data });
+  emit();
+}
+
+export function redoRewind(sessionId: string): void {
+  const data = state.sessions.get(sessionId);
+  if (!data || data.redoStack.length === 0) return;
+
+  data.entries.push(...data.redoStack);
+  data.redoStack = [];
+  state.sessions.set(sessionId, { ...data });
   emit();
 }
 

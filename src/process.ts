@@ -3,6 +3,7 @@ import { writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
+import { execSync } from "child_process";
 import type { SessionConfig } from "./schema.js";
 
 // ─── Default claude path ────────────────────────────────────────
@@ -10,6 +11,18 @@ import type { SessionConfig } from "./schema.js";
 const DEFAULT_CLAUDE_PATH = process.platform === "win32"
   ? "claude.exe"
   : "claude";
+
+// On Windows, resolve the real claude.exe path once at startup via `where`.
+// The configured path may be a WinGet Links shim that cmd.exe can't execute.
+let resolvedClaudePath: string | null = null;
+if (process.platform === "win32") {
+  try {
+    resolvedClaudePath = execSync("where claude", { encoding: "utf-8", timeout: 3000 })
+      .trim()
+      .split(/\r?\n/)[0]
+      .replace(/\//g, "\\") || null;
+  } catch {}
+}
 
 // ─── Arg builder ────────────────────────────────────────────────
 
@@ -22,7 +35,6 @@ export function buildArgs(
     "--input-format", "stream-json",
     "--output-format", "stream-json",
     "--verbose",
-    "--include-partial-messages",
     "--settings", settingsFilePath,
   ];
 
@@ -33,9 +45,19 @@ export function buildArgs(
   // We implement our own permission logic in the PreToolUse hook instead.
   args.push("--dangerously-skip-permissions");
 
+  if (config.systemPrompt) args.push("--append-system-prompt", config.systemPrompt);
   if (config.resumeSessionId) args.push("--resume", config.resumeSessionId);
   if (config.maxTurns != null) args.push("--max-turns", String(config.maxTurns));
+  if (config.maxBudgetUsd != null) args.push("--max-budget-usd", String(config.maxBudgetUsd));
+  if (config.fallbackModel) args.push("--fallback-model", config.fallbackModel);
+  if (config.effort) args.push("--effort", config.effort);
+  if (config.worktree === true) args.push("--worktree");
+  else if (typeof config.worktree === "string" && config.worktree) args.push("--worktree", config.worktree);
   if (config.noSessionPersistence) args.push("--no-session-persistence");
+
+  for (const dir of config.addDirs ?? []) {
+    args.push("--add-dir", dir);
+  }
 
   for (const tool of config.allowedTools ?? []) {
     args.push("--allowedTools", tool);
@@ -54,7 +76,12 @@ export function spawnClaude(
   hookPort: number,
   settingsJson: string,
 ): ChildProcess {
-  const claudePath = config.claudePath ?? DEFAULT_CLAUDE_PATH;
+  // On Windows, prefer the resolved real path over the configured path
+  // (which may be a WinGet Links shim that cmd.exe can't execute).
+  let claudePath = resolvedClaudePath ?? config.claudePath ?? DEFAULT_CLAUDE_PATH;
+  if (process.platform === "win32") {
+    claudePath = claudePath.replace(/\//g, "\\");
+  }
 
   // Write settings to a temp file to avoid shell escaping issues on Windows
   const settingsDir = join(tmpdir(), "buddy-builder");

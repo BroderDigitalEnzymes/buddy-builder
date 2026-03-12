@@ -43,6 +43,7 @@ export function applySessionEvent(data: SessionData, event: SessionEvent): Event
     case "usage":
       data.totalInputTokens += event.inputTokens;
       data.totalOutputTokens += event.outputTokens;
+      data.contextTokens = event.inputTokens;
       break;
     case "stateChange":
       data.state = event.to;

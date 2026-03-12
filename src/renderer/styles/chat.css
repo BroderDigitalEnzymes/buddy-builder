@@ -102,6 +102,116 @@
   margin-left: 8px;
 }
 
+.model-badge.clickable {
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.model-badge.clickable:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-strong);
+}
+
+.model-badge.clickable.disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.model-badge.clickable.disabled:hover {
+  background: var(--bg-3);
+  border-color: transparent;
+}
+
+/* ─── Effort picker ─── */
+.effort-picker-wrap { position: relative; margin-left: 4px; }
+
+.effort-badge {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.effort-badge.clickable {
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.effort-badge.clickable:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-strong);
+}
+
+.effort-badge.clickable.disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.effort-badge.clickable.disabled:hover {
+  background: var(--bg-3);
+  border-color: transparent;
+}
+
+.model-picker-wrap {
+  position: relative;
+}
+
+.model-chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.model-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  min-width: 140px;
+  padding: 4px;
+  animation: dropdown-in 0.12s ease-out;
+}
+
+.model-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.1s;
+}
+
+.model-dropdown-item:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.model-dropdown-item.active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.model-dropdown-label { flex: 1; text-align: left; }
+.model-dropdown-check { color: var(--accent); font-size: 14px; }
+
 .token-counter {
   font-size: 11px;
   font-family: var(--font-mono);
@@ -109,6 +219,41 @@
   padding: 2px 8px;
   white-space: nowrap;
 }
+
+/* ─── Context usage meter ─── */
+
+.context-meter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 2px 8px;
+}
+
+.context-meter-stats {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.context-meter-bar {
+  width: 80px;
+  height: 3px;
+  background: var(--bg-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.context-meter-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.context-meter-fill.low  { background: var(--accent); }
+.context-meter-fill.mid  { background: #e0a030; }
+.context-meter-fill.high { background: #d04040; }
 
 /* ─── Rate limit banner ─── */
 
@@ -181,6 +326,98 @@
   color: var(--accent);
   border-color: var(--accent);
   background: var(--accent-bg);
+}
+
+/* ─── Checkpoint markers ─── */
+
+.msg-checkpoint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.015);
+  margin: 4px 0;
+}
+
+.checkpoint-badge {
+  font-weight: 700;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: rgba(0,168,232,0.1);
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.checkpoint-info {
+  font-family: var(--font-mono);
+  flex: 1;
+}
+
+.checkpoint-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.msg-checkpoint:hover .checkpoint-actions { opacity: 1; }
+
+.checkpoint-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.checkpoint-btn:hover { background: var(--bg-3); border-color: var(--border-strong); }
+.checkpoint-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+
+/* ─── Rewind banner ─── */
+
+.rewind-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: rgba(0,168,232,0.08);
+  border-top: 1px solid var(--accent);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.rewind-banner-btn {
+  padding: 3px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.rewind-banner-btn:hover { background: rgba(0,168,232,0.1); }
+
+.export-btn-wrap { position: relative; }
+
+.compact-btn:disabled,
+.fork-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
 }
 
 /* ─── PolicyPicker (shared component) ─── */

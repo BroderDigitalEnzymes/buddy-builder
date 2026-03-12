@@ -103,9 +103,11 @@ export function wireSession(managed: WirableManagedSession, session: Session, si
 
   session.on("message", (msg) => {
     if (msg.message.usage) {
-      managed.totalInputTokens += msg.message.usage.input_tokens;
-      managed.totalOutputTokens += msg.message.usage.output_tokens;
-      sink({ kind: "usage", sessionId: id, inputTokens: msg.message.usage.input_tokens, outputTokens: msg.message.usage.output_tokens });
+      const u = msg.message.usage;
+      const totalIn = u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+      managed.totalInputTokens += totalIn;
+      managed.totalOutputTokens += u.output_tokens;
+      sink({ kind: "usage", sessionId: id, inputTokens: totalIn, outputTokens: u.output_tokens });
     }
   });
 
