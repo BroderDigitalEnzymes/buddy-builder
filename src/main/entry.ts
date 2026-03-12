@@ -498,13 +498,17 @@ app.whenReady().then(() => {
   let claudePath = config.claudePath;
   try {
     const shell = process.env.SHELL || "/bin/zsh";
-    const shellPath = execSync(`${shell} -ilc "echo \\$PATH"`, { encoding: "utf-8" }).trim();
+    const rawPath = execSync(`${shell} -ilc "echo \\$PATH"`, { encoding: "utf-8" });
+    // Interactive login shells may print extra startup text — take only the last non-empty line
+    const shellPath = rawPath.trim().split("\n").filter(Boolean).pop();
     if (shellPath) {
       process.env.PATH = shellPath;
       console.log("[shell] inherited PATH from login shell");
     }
     if (claudePath === "claude") {
-      claudePath = execSync(`${shell} -ilc "which claude"`, { encoding: "utf-8" }).trim();
+      const raw = execSync(`${shell} -ilc "which claude"`, { encoding: "utf-8" });
+      // Interactive login shells may print extra startup text — take only the last non-empty line
+      claudePath = raw.trim().split("\n").filter(Boolean).pop() ?? "claude";
       console.log("[claude] resolved path:", claudePath);
     }
   } catch {
