@@ -79,6 +79,7 @@ type SessionItemProps = {
   live: boolean;
   pinned?: boolean;
   timeLabel?: string;
+  snippet?: string;
   onSwitch: (id: string) => void;
   onKill: (id: string) => void;
   onDelete: (id: string) => void;
@@ -86,7 +87,7 @@ type SessionItemProps = {
   onToggleFavorite?: (id: string) => void;
 };
 
-function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, timeLabel, onSwitch, onKill, onDelete, onRename, onToggleFavorite }: SessionItemProps) {
+function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, timeLabel, snippet, onSwitch, onKill, onDelete, onRename, onToggleFavorite }: SessionItemProps) {
   const isDead = s.state === "dead";
   const isPoppedOut = poppedOutIds?.has(s.id) ?? false;
   return (
@@ -97,8 +98,15 @@ function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, 
       title={isPoppedOut ? "Focus pop-out window" : undefined}
     >
       <span className={`session-dot state-${s.state}`} />
-      <EditableSessionLabel name={s.name} onRename={(name) => onRename(s.id, name)} />
-      {timeLabel && <span className="session-time">{timeLabel}</span>}
+      <div className="session-item-text">
+        <div className="session-item-row">
+          <EditableSessionLabel name={s.name} onRename={(name) => onRename(s.id, name)} />
+          {timeLabel && <span className="session-time">{timeLabel}</span>}
+        </div>
+        {snippet && (
+          <div className="session-snippet" dangerouslySetInnerHTML={{ __html: snippet }} />
+        )}
+      </div>
       <span
         className={`session-fav ${s.favorite ? "starred" : ""}`}
         title={s.favorite ? "Remove from favorites" : "Add to favorites"}
@@ -120,7 +128,7 @@ function SessionItem({ session: s, depth, activeId, poppedOutIds, live, pinned, 
 
 function DirGroupList({
   groups, unknown, activeId, poppedOutIds,
-  onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live,
+  onSwitch, onKill, onDelete, onRename, onCreate, onToggleFavorite, live, snippets,
 }: {
   groups: DirGroup[];
   unknown: SessionData[];
@@ -133,6 +141,7 @@ function DirGroupList({
   onCreate: (cwd: string) => void;
   onToggleFavorite: (id: string) => void;
   live: boolean;
+  snippets?: Map<string, string>;
 }) {
   if (groups.length === 0 && unknown.length === 0) {
     return (
@@ -165,6 +174,7 @@ function DirGroupList({
               activeId={activeId}
               poppedOutIds={poppedOutIds}
               live={live}
+              snippet={snippets?.get(s.id)}
               onSwitch={onSwitch}
               onKill={onKill}
               onDelete={onDelete}
@@ -182,6 +192,7 @@ function DirGroupList({
           activeId={activeId}
           poppedOutIds={poppedOutIds}
           live={live}
+          snippet={snippets?.get(s.id)}
           onSwitch={onSwitch}
           onKill={onKill}
           onDelete={onDelete}
@@ -241,11 +252,33 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
 
   const q = search;
 
+  // Full-text content search via the search index
+  const [contentMatches, setContentMatches] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!q.trim()) {
+      setContentMatches(new Map());
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await api().searchSessions({ query: q.trim() });
+        if (!cancelled) {
+          const map = new Map<string, string>();
+          for (const r of results) map.set(r.sessionId, r.snippet);
+          setContentMatches(map);
+        }
+      } catch {}
+    }, 200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [q]);
+  const contentMatchIds = useMemo(() => new Set(contentMatches.keys()), [contentMatches]);
+
   // Split into live / pinned / history via pure module
   const pinnedIds = useMemo(() => new Set(sessions.filter(s => s.favorite).map(s => s.id)), [sessions]);
   const { live: filteredLive, pinned: pinnedSessions, history: historySessions, historyAll: historyForTree } = useMemo(
-    () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT),
-    [sessions, q, pinnedIds],
+    () => splitSessions(sessions, q, pinnedIds, HISTORY_LIMIT, q.trim() ? contentMatchIds : undefined),
+    [sessions, q, pinnedIds, contentMatchIds],
   );
 
   const liveGroups = useMemo(() => groupByDirectory(filteredLive), [filteredLive]);
@@ -327,6 +360,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                 onCreate={handleCreateInDir}
                 onToggleFavorite={onToggleFavorite}
                 live={true}
+                snippets={contentMatches}
               />
             </div>
           </div>
@@ -361,6 +395,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                   live={false}
                   pinned={true}
                   timeLabel={relativeTime(s.lastActiveAt)}
+                  snippet={contentMatches.get(s.id)}
                   onSwitch={onSwitch}
                   onKill={onKill}
                   onDelete={onDelete}
@@ -384,6 +419,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                   onCreate={handleCreateInDir}
                   onToggleFavorite={onToggleFavorite}
                   live={false}
+                  snippets={contentMatches}
                 />
               ) : (
                 historySessions.length === 0 && pinnedSessions.length === 0 ? (
@@ -397,6 +433,7 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
                     poppedOutIds={poppedOutIds}
                     live={false}
                     timeLabel={relativeTime(s.lastActiveAt)}
+                    snippet={contentMatches.get(s.id)}
                     onSwitch={onSwitch}
                     onKill={onKill}
                     onDelete={onDelete}

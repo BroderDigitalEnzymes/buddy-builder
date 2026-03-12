@@ -142,7 +142,7 @@ body {
 
 .title-search-input {
   width: 100%;
-  padding: 3px 26px 3px 28px;
+  padding: 6px 26px 6px 28px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-2);
