@@ -216,7 +216,7 @@ export function createSessionManager(sink: EventSink, claudePath: string): Sessi
     const id = stub.claudeSessionId;
     const managed: ManagedSession = {
       id,
-      name: m.name ?? stub.slug ?? "New Session",
+      name: m.name || stub.slug || "Untitled Session",
       projectName: stub.projectName,
       session: null,
       claudeSessionId: stub.claudeSessionId,

@@ -251,18 +251,37 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
   const liveGroups = useMemo(() => groupByDirectory(filteredLive), [filteredLive]);
   const historyGroups = useMemo(() => groupByDirectory(historyForTree), [historyForTree]);
   const handleCreateInDir = useCallback((cwd: string) => onCreate(perm, cwd), [perm, onCreate]);
+  const [pendingFolder, setPendingFolder] = useState<string | null>(null);
+
   const handleBrowse = useCallback(async () => {
     const folder = await pickFolder();
     if (folder) onCreate(perm, folder);
   }, [perm, onCreate]);
 
-  const handleNewClick = useCallback(() => {
+  const handleNewClick = useCallback(async () => {
     if (defaultFolder) {
       onCreate(perm, defaultFolder);
     } else {
-      handleBrowse();
+      const folder = await pickFolder();
+      if (!folder) return;
+      // Show prompt offering to save as default
+      setPendingFolder(folder);
     }
-  }, [defaultFolder, perm, onCreate, handleBrowse]);
+  }, [defaultFolder, perm, onCreate]);
+
+  const handlePendingJustOnce = useCallback(() => {
+    if (pendingFolder) onCreate(perm, pendingFolder);
+    setPendingFolder(null);
+  }, [pendingFolder, perm, onCreate]);
+
+  const handlePendingSetDefault = useCallback(async () => {
+    if (!pendingFolder) return;
+    const cfg = await api().getConfig();
+    await api().setConfig({ ...cfg, defaultProjectsFolder: pendingFolder });
+    setDefaultFolder(pendingFolder);
+    onCreate(perm, pendingFolder);
+    setPendingFolder(null);
+  }, [pendingFolder, perm, onCreate]);
 
   return (
     <>
@@ -391,6 +410,21 @@ export const Sidebar = memo(function Sidebar({ sessions, activeId, poppedOutIds,
         </div>
         <div className="sidebar-resize-handle" onMouseDown={onResizeMouseDown} />
       </div>
+      {pendingFolder && (
+        <div className="naming-modal-overlay" onClick={() => setPendingFolder(null)}>
+          <div className="naming-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="naming-modal-title">Set as default folder?</div>
+            <div className="default-folder-prompt-path">{pendingFolder}</div>
+            <div className="default-folder-prompt-hint">
+              New sessions will open here automatically, so you won't need to pick a folder each time.
+            </div>
+            <div className="naming-modal-actions">
+              <button className="naming-btn naming-btn-cancel" onClick={handlePendingJustOnce}>Just this once</button>
+              <button className="naming-btn naming-btn-ok" onClick={handlePendingSetDefault}>Set as default</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 });

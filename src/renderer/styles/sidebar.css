@@ -237,7 +237,6 @@
   margin-left: auto;
   font-size: 10px;
   color: var(--text-muted);
-  opacity: 0.6;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -250,7 +249,7 @@
   padding: 8px 14px;
   border: none;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
@@ -260,7 +259,7 @@
 
 .session-item:hover {
   background: var(--hover-bg);
-  color: var(--text-secondary);
+  color: var(--text);
 }
 
 .session-item.active {
@@ -277,7 +276,7 @@
 
 .session-dot.state-idle { background: var(--success); }
 .session-dot.state-busy { background: var(--warning); animation: pulse 1.5s ease-in-out infinite; }
-.session-dot.state-dead { background: var(--text-muted); opacity: 0.5; }
+.session-dot.state-dead { background: var(--text-muted); opacity: 0.7; }
 
 .session-label {
   flex: 1;
@@ -350,8 +349,7 @@
 .session-kill:hover { opacity: 1 !important; background: rgba(224, 30, 90, 0.15); }
 
 .session-item.session-dead .session-label {
-  font-style: italic;
-  opacity: 0.6;
+  opacity: 0.8;
 }
 
 .session-item.popped-out {
@@ -676,3 +674,22 @@
 
 .naming-btn-ok:hover { opacity: 0.85; }
 .naming-btn-ok:disabled { opacity: 0.4; cursor: default; }
+
+/* ─── Default folder prompt ─── */
+
+.default-folder-prompt-path {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--bg-0);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.default-folder-prompt-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
