@@ -1,6 +1,6 @@
 {
   "name": "buddy-builder",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "description": "A desktop GUI for Claude Code. Manage multiple sessions, search conversations, and work with AI — visually.",
   "main": "dist/main.cjs",
   "bin": {
