@@ -15,52 +15,53 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
     }
 
     .hero {
       text-align: center;
-      padding: 80px 20px 40px;
+      padding: 0 20px 20px;
       max-width: 700px;
     }
 
     .hero img {
-      width: 120px;
-      height: 120px;
-      border-radius: 24px;
-      margin-bottom: 24px;
+      width: 96px;
+      height: 96px;
+      border-radius: 20px;
+      margin-bottom: 16px;
     }
 
     .hero h1 {
-      font-size: 42px;
+      font-size: 36px;
       font-weight: 700;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
 
     .hero p {
-      font-size: 18px;
+      font-size: 16px;
       color: #8b949e;
-      line-height: 1.6;
+      line-height: 1.5;
     }
 
     .install {
-      max-width: 600px;
+      max-width: 500px;
       width: 100%;
-      margin: 40px auto 0;
+      margin: 20px auto 0;
       padding: 0 20px;
     }
 
     .install-step {
       background: #161b22;
       border: 1px solid #30363d;
-      border-radius: 12px;
-      padding: 24px 28px;
-      margin-bottom: 16px;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 10px;
     }
 
     .install-step h3 {
-      font-size: 14px;
+      font-size: 12px;
       color: #8b949e;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       font-weight: 500;
     }
 
@@ -70,10 +71,10 @@
       gap: 12px;
       background: #0d1117;
       border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 14px 16px;
+      border-radius: 6px;
+      padding: 10px 14px;
       font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-      font-size: 15px;
+      font-size: 14px;
       color: #e6edf3;
     }
 
@@ -86,7 +87,7 @@
       border: 1px solid #30363d;
       border-radius: 6px;
       color: #8b949e;
-      padding: 4px 10px;
+      padding: 3px 10px;
       font-size: 12px;
       cursor: pointer;
       transition: all 0.2s;
@@ -99,16 +100,16 @@
     }
 
     .prereq {
-      max-width: 600px;
-      margin: 24px auto 0;
-      padding: 16px 20px;
+      max-width: 500px;
+      margin: 16px auto 0;
+      padding: 12px 16px;
       background: #1c2128;
       border: 1px solid #30363d;
       border-radius: 8px;
-      font-size: 13px;
+      font-size: 12px;
       color: #8b949e;
       text-align: center;
-      line-height: 1.6;
+      line-height: 1.5;
     }
 
     .prereq strong {
@@ -120,12 +121,31 @@
       text-decoration: none;
     }
 
-    .footer {
-      margin-top: 60px;
-      padding: 20px;
-      text-align: center;
-      color: #484f58;
-      font-size: 13px;
+    .github-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 24px;
+      padding: 8px 20px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 100px;
+      color: #e6edf3;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .github-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .github-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: #e6edf3;
     }
   </style>
 </head>
@@ -158,8 +178,11 @@
     Works on macOS, Windows, and Linux.
   </div>
 
-  <div class="footer">
-    <a href="https://github.com/BroderDigitalEnzymes/buddy-builder" target="_blank">GitHub</a>
+  <div style="text-align: center;">
+    <a class="github-btn" href="https://github.com/BroderDigitalEnzymes/buddy-builder" target="_blank">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
   </div>
 
   <script>
