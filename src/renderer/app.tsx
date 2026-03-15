@@ -32,6 +32,7 @@ import { TitleBar, InfoWindow } from "./components.js";
 import { ChatHeader } from "./chat-header.js";
 import { MessageList, RateLimitBanner } from "./chat.js";
 import { InputBar } from "./input-bar.js";
+import { TerminalBar } from "./terminal-panel.js";
 import { Sidebar } from "./sidebar.js";
 import { IconRail } from "./icon-rail.js";
 import { SettingsView } from "./settings-view.js";
@@ -169,6 +170,9 @@ function App() {
           onResume={handleResume}
           onResumeTerminal={handleResumeTerminal}
         />
+      )}
+      {activeSession?.cwd && (
+        <TerminalBar cwd={activeSession.cwd} />
       )}
     </div>
   );

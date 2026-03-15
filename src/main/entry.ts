@@ -367,6 +367,14 @@ function buildHandlers(mgr: SessionManager): Handlers {
         broadcast("indexProgress", status);
       });
     },
+    runCommand: ({ command, cwd }) => {
+      return new Promise((resolve) => {
+        const { exec } = require("child_process");
+        exec(command, { cwd, timeout: 30000, maxBuffer: 1024 * 1024, env: process.env }, (err: any, stdout: string, stderr: string) => {
+          resolve({ stdout: stdout ?? "", stderr: stderr ?? "", exitCode: err ? (err.code ?? 1) : 0 });
+        });
+      });
+    },
     winMinimize:    () => { BrowserWindow.getFocusedWindow()?.minimize(); },
     winMaximize:    () => {
       const w = BrowserWindow.getFocusedWindow();

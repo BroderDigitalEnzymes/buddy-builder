@@ -215,6 +215,7 @@ export type InvokeContract = {
   searchSessions:    { in: { query: string; limit?: number }; out: SearchResultItem[] };
   getIndexStatus:    { in: undefined; out: IndexStatusInfo };
   triggerReindex:    { in: undefined; out: void };
+  runCommand:        { in: { command: string; cwd: string }; out: { stdout: string; stderr: string; exitCode: number | null } };
   winMinimize:       { in: undefined; out: void };
   winMaximize:       { in: undefined; out: void };
   winClose:          { in: undefined; out: void };
@@ -283,6 +284,7 @@ export const INVOKE_CHANNELS = [
   "getSessionMeta", "openInfoWindow",
   "popOutSession", "popInSession", "focusPopout", "setAlwaysOnTop",
   "searchSessions", "getIndexStatus", "triggerReindex",
+  "runCommand",
   "winMinimize", "winMaximize", "winClose",
 ] as const satisfies readonly (keyof InvokeContract)[];
 
