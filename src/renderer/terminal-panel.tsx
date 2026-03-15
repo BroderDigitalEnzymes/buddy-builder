@@ -19,14 +19,46 @@ export const TerminalBar = memo(function TerminalBar({ cwd }: TerminalBarProps) 
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [expanded, setExpanded] = useState(false);
+  const [outputHeight, setOutputHeight] = useState(200);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(0);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [history]);
+
+  // Drag resize handlers
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    dragStartY.current = e.clientY;
+    dragStartHeight.current = outputHeight;
+
+    const handleMove = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      const delta = dragStartY.current - ev.clientY;
+      const newHeight = Math.max(60, Math.min(600, dragStartHeight.current + delta));
+      setOutputHeight(newHeight);
+    };
+
+    const handleUp = () => {
+      dragging.current = false;
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+  }, [outputHeight]);
 
   const runCommand = useCallback(async () => {
     const cmd = input.trim();
@@ -76,25 +108,29 @@ export const TerminalBar = memo(function TerminalBar({ cwd }: TerminalBarProps) 
   }, [runCommand, cmdHistory, historyIndex]);
 
   const cwdShort = cwd.replace(/^\/Users\/[^/]+/, "~");
+  const showOutput = expanded && history.length > 0;
 
   return (
     <div className="terminal-bar">
-      {expanded && history.length > 0 && (
-        <div className="terminal-output" ref={scrollRef}>
-          {history.map((r, i) => (
-            <div key={i} className="terminal-entry">
-              <div className="terminal-cmd">
-                <span className="terminal-prompt">$</span> {r.command}
+      {showOutput && (
+        <>
+          <div className="terminal-resize-handle" onMouseDown={handleDragStart} />
+          <div className="terminal-output" ref={scrollRef} style={{ height: outputHeight }}>
+            {history.map((r, i) => (
+              <div key={i} className="terminal-entry">
+                <div className="terminal-cmd">
+                  <span className="terminal-prompt">$</span> {r.command}
+                </div>
+                {r.stdout && <pre className="terminal-stdout">{r.stdout}</pre>}
+                {r.stderr && <pre className="terminal-stderr">{r.stderr}</pre>}
+                {r.exitCode !== 0 && r.exitCode !== null && (
+                  <div className="terminal-exit-code">exit {r.exitCode}</div>
+                )}
               </div>
-              {r.stdout && <pre className="terminal-stdout">{r.stdout}</pre>}
-              {r.stderr && <pre className="terminal-stderr">{r.stderr}</pre>}
-              {r.exitCode !== 0 && r.exitCode !== null && (
-                <div className="terminal-exit-code">exit {r.exitCode}</div>
-              )}
-            </div>
-          ))}
-          {running && <div className="terminal-running">Running...</div>}
-        </div>
+            ))}
+            {running && <div className="terminal-running">Running...</div>}
+          </div>
+        </>
       )}
       <div className="terminal-input-row">
         <span className="terminal-cwd" title={cwd}>{cwdShort}</span>
@@ -110,7 +146,7 @@ export const TerminalBar = memo(function TerminalBar({ cwd }: TerminalBarProps) 
           spellCheck={false}
           autoComplete="off"
         />
-        {expanded && history.length > 0 && (
+        {showOutput && (
           <button
             className="terminal-collapse"
             onClick={() => setExpanded(false)}
